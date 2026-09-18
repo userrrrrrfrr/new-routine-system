@@ -746,6 +746,11 @@ async function startServerReminder(step) {
   if (!currentUser || !activeRoutine) return;
   const effectiveBarkUrl = barkUrl || (document.getElementById("barkUrlInput")?.value || "").trim();
   if (!effectiveBarkUrl) return;
+
+  /* בנה קישור ייחודי לשגרה הזו */
+  const baseUrl = window.location.origin + window.location.pathname;
+  const routineUrl = baseUrl + "?routine=" + encodeURIComponent(activeRoutine.id);
+
   try {
     await fetch(`${WORKER_URL}/start`, {
       method: "POST",
@@ -753,7 +758,8 @@ async function startServerReminder(step) {
       body: JSON.stringify({
         routineName: activeRoutine.name || "",
         stepName: step.name || "",
-        barkUrl: effectiveBarkUrl
+        barkUrl: effectiveBarkUrl,
+        routineUrl: routineUrl
       })
     });
   } catch (e) { console.warn("startServerReminder failed:", e); }

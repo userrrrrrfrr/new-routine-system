@@ -747,6 +747,35 @@ async function startServerReminder(step) {
   const effectiveBarkUrl = barkUrl || (document.getElementById("barkUrlInput")?.value || "").trim();
   if (!effectiveBarkUrl) return;
 
+  const baseUrl = window.location.origin + window.location.pathname;
+  const routineUrl = activeRoutine.notificationUrl
+    ? activeRoutine.notificationUrl
+    : baseUrl + "?routine=" + encodeURIComponent(activeRoutine.id);
+
+  let nextStepName = "";
+  if (activeSteps && activeStepIndex + 1 < activeSteps.length) {
+    const next = activeSteps[activeStepIndex + 1];
+    if (next && next.name) nextStepName = String(next.name);
+  }
+
+  try {
+    await fetch(`${WORKER_URL}/start`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        routineName: activeRoutine.name || "",
+        stepName: step.name || "",
+        nextStepName: nextStepName,
+        barkUrl: effectiveBarkUrl,
+        routineUrl: routineUrl
+      })
+    });
+  } catch (e) { console.warn("startServerReminder failed:", e); }
+}
+  if (!currentUser || !activeRoutine) return;
+  const effectiveBarkUrl = barkUrl || (document.getElementById("barkUrlInput")?.value || "").trim();
+  if (!effectiveBarkUrl) return;
+
   /* בנה קישור ייחודי לשגרה הזו */
   const baseUrl = window.location.origin + window.location.pathname;
   const routineUrl = baseUrl + "?routine=" + encodeURIComponent(activeRoutine.id);

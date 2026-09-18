@@ -1305,13 +1305,21 @@ async function copyRoutineLink(routineId) {
 }
 
 /* DIRECT LINK */
-function openRoutineFromLink() {
+async function openRoutineFromLink() {
   const params = new URLSearchParams(window.location.search);
   const routineId = params.get("routine");
   if (!routineId) { return; }
   const routine = routines.find(item => item.id === routineId);
   if (!routine) { alert("ה-Routine לא נמצא בחשבון הזה."); return; }
-  showDirectRoutine(routine);
+
+  /* נקה את הפרמטר מה-URL כדי שלא יחזור על עצמו */
+  window.history.replaceState({}, "", window.location.origin + window.location.pathname);
+
+  /* אם יש כבר שגרה פעילה — לא מתחילים חדשה */
+  if (activeRoutine) { return; }
+
+  /* התחל את השגרה אוטומטית */
+  await startRoutine(routine);
 }
 
 function showDirectRoutine(routine) {

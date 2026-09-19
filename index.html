@@ -21,7 +21,7 @@
     #app { display: none; }
     .container { width: 92%; max-width: 900px; margin: auto; padding: 12px 0 60px; }
 
-    .user-tab { position: fixed; top: 18px; left: 0; z-index: 1000; background: white; border: 1px solid #e5e5e5; border-left: 0; border-radius: 0 14px 14px 0; padding: 9px 12px; box-shadow: 0 4px 18px rgba(0,0,0,.08); display: flex; align-items: center; gap: 7px; font-size: 13px; color: #555; transition: transform .25s ease; }
+    .user-tab { position: fixed; top: 18px; left: 0; z-index: 1000; background: white; border: 1px solid #e5e5e5; border-left: 0; border-radius: 0 14px 14px 0; padding: 9px 12px; box-shadow: 0 4px 18px rgba(0,0,0,.08); display: flex; align-items: center; gap: 7px; font-size: 13px; color: #555; }
     .user-tab-icon { font-size: 16px; }
 
     .day-timer { position: fixed; top: 18px; right: 0; z-index: 1000; background: white; border: 1px solid #e5e5e5; border-right: 0; border-radius: 14px 0 0 14px; padding: 9px 14px; box-shadow: 0 4px 18px rgba(0,0,0,.08); display: flex; flex-direction: column; align-items: flex-end; gap: 2px; font-size: 12px; color: #555; min-width: 110px; text-align: left; }
@@ -51,8 +51,7 @@
     .main-title h1 { margin: 0; font-size: 30px; }
 
     .main-tabs { display: flex; gap: 8px; margin-bottom: 16px; background: white; padding: 8px; border-radius: 16px; box-shadow: 0 2px 12px rgba(0,0,0,.04); }
-    .main-tab { flex: 1; padding: 14px 12px; border: 0; border-radius: 12px; background: transparent; color: #666; font-size: 16px; font-weight: 600; transition: background .15s ease, color .15s ease; }
-    .main-tab:hover { background: #f5f5f7; color: #222; }
+    .main-tab { flex: 1; padding: 14px 12px; border: 0; border-radius: 12px; background: transparent; color: #666; font-size: 16px; font-weight: 600; }
     .main-tab.active { background: #111; color: white; }
 
     #calendarScreen { display: none; }
@@ -71,7 +70,7 @@
     .image-upload { margin-top: 10px; }
     .image-upload label { display: block; font-weight: bold; margin-bottom: 8px; }
     .image-input { width: 100%; padding: 10px; border: 1px solid #ddd; border-radius: 10px; background: white; }
-    .image-preview { margin-top: 12px; position: relative; }
+    .image-preview { margin-top: 12px; }
     .image-preview img { width: 100%; max-height: 250px; object-fit: cover; border-radius: 15px; border: 1px solid #eee; display: block; }
     .remove-image { margin-top: 8px; padding: 8px 12px; border: 1px solid #ddd; background: white; border-radius: 8px; color: #d00; }
     .routine-image { width: 100%; max-height: 220px; object-fit: cover; border-radius: 15px; margin-bottom: 15px; display: block; }
@@ -95,31 +94,24 @@
     .day span { display: block; padding: 10px 14px; border: 1px solid #ddd; border-radius: 10px; cursor: pointer; }
     .day input:checked + span { background: #111; color: white; }
 
-    .step { border: 1px solid #eee; border-radius: 15px; padding: 15px; margin-bottom: 12px; background: #fafafa; position: relative; transition: opacity .15s ease, border-color .15s ease, background .15s ease; }
+    .step { border: 1px solid #eee; border-radius: 15px; padding: 15px; margin-bottom: 12px; background: #fafafa; }
     .step.activation-only { background: #fff0f0; border: 2px solid #ffb8b8; }
     .activation-only-label { display: inline-block; margin-right: 8px; padding: 4px 9px; border-radius: 7px; background: #ffd6d6; color: #c40000; font-size: 12px; font-weight: 600; }
     .step.dragging { opacity: .45; border: 2px dashed #111; }
     .step-drag-handle { cursor: grab; padding: 4px 10px; background: #e5e5ea; border-radius: 6px; font-size: 16px; user-select: none; margin-left: 8px; display: inline-block; line-height: 1; }
-    .step-drag-handle:active { cursor: grabbing; }
     .step-title { display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px; gap: 10px; }
     .step-id-tag { font-size: 11px; background: #e5e5ea; padding: 3px 8px; border-radius: 6px; color: #555; font-weight: normal; }
     .step-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
     .frequency-wrapper { display: flex; align-items: center; gap: 8px; }
     .frequency-wrapper input { flex: 1; }
-    .frequency-label { min-width: 125px; font-size: 13px; color: #777; line-height: 1.3; }
+    .frequency-label { min-width: 125px; font-size: 13px; color: #777; }
     .frequency-label.special { color: #c40000; font-weight: bold; }
     .disable-box { margin-top: 15px; padding: 14px; border: 1px dashed #ccc; border-radius: 12px; background: #fcfcfc; }
     .activation-box { margin-top: 15px; padding: 14px; border: 1px dashed #aaa; border-radius: 12px; background: #fcfcfc; }
-    .activation-box-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px; }
-    .activation-rule-row { display: flex; gap: 10px; align-items: flex-end; margin-bottom: 10px; background: #fff; padding: 10px; border: 1px solid #eaeaea; border-radius: 10px; }
-    .activation-rule-row > div { flex: 1; }
-    .activation-rule-row label { font-size: 12px; color: #666; display: block; margin-bottom: 4px; }
-    .activation-box .btn-add-rule { background: #f0f0f3; border: 1px solid #ddd; padding: 6px 12px; border-radius: 8px; font-size: 13px; }
-    .activation-box .btn-remove-rule { padding: 10px 14px; background: #fff; border: 1px solid #ddd; color: #d00; border-radius: 8px; }
-    .disable-box-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px; }
-    .disable-rule-row { display: flex; gap: 10px; align-items: flex-end; margin-bottom: 10px; background: #fff; padding: 10px; border: 1px solid #eaeaea; border-radius: 10px; }
-    .disable-rule-row > div { flex: 1; }
-    .disable-rule-row label { font-size: 12px; color: #666; display: block; margin-bottom: 4px; }
+    .activation-box-header, .disable-box-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px; }
+    .activation-rule-row, .disable-rule-row { display: flex; gap: 10px; align-items: flex-end; margin-bottom: 10px; background: #fff; padding: 10px; border: 1px solid #eaeaea; border-radius: 10px; }
+    .activation-rule-row > div, .disable-rule-row > div { flex: 1; }
+    .activation-rule-row label, .disable-rule-row label { font-size: 12px; color: #666; display: block; margin-bottom: 4px; }
     .btn-add-rule { background: #f0f0f3; border: 1px solid #ddd; padding: 6px 12px; border-radius: 8px; font-size: 13px; }
     .btn-remove-rule { padding: 10px 14px; background: #fff; border: 1px solid #ddd; color: #d00; border-radius: 8px; }
     .step-actions-bar { display: flex; gap: 10px; margin-bottom: 20px; background: #f0f0f3; padding: 12px; border-radius: 12px; align-items: center; }
@@ -128,12 +120,10 @@
     #activeScreen { display: none; min-height: auto; padding: 0; }
     .active-box { max-width: 480px; margin: 0 auto; background: white; border-radius: 28px; padding: 16px 22px 24px; text-align: center; box-shadow: 0 8px 30px rgba(0,0,0,.06); }
     #activeRoutineName { margin: 0 0 8px; font-size: 17px; font-weight: 600; color: #222; text-align: left; width: 100%; }
-    .active-step-card { background: #fafafa; border: 2px dashed #e0e0e0; border-radius: 20px; padding: 18px 12px; margin-bottom: 12px; cursor: pointer; user-select: none; transition: background-color .15s ease, border-color .15s ease, transform .1s ease; }
-    .active-step-card:hover { border-color: #bbb; }
-    .active-step-card:active { background-color: #f0f0f3; transform: scale(.99); }
+    .active-step-card { background: #fafafa; border: 2px dashed #e0e0e0; border-radius: 20px; padding: 18px 12px; margin-bottom: 12px; cursor: pointer; }
     .active-step-image { width: 100%; max-height: 340px; object-fit: contain; border-radius: 18px; margin: 0 auto 6px; display: block; pointer-events: none; }
-    #activeStepName { font-size: 42px; font-weight: 800; color: #d00; margin: 8px 0 8px; line-height: 1.15; letter-spacing: -.5px; word-break: break-word; }
-    #activeStepName a { color: #007aff; text-decoration: underline; cursor: pointer; position: relative; z-index: 10; pointer-events: auto; }
+    #activeStepName { font-size: 42px; font-weight: 800; color: #d00; margin: 8px 0 8px; line-height: 1.15; word-break: break-word; }
+    #activeStepName a { color: #007aff; text-decoration: underline; pointer-events: auto; }
     #timer { font-size: 58px; font-weight: 700; margin: 4px 0 18px; color: #111; pointer-events: none; }
     .tap-hint { font-size: 13px; color: #999; margin-bottom: 16px; }
     .active-action-buttons { display: flex; gap: 10px; margin-top: 10px; }
@@ -157,7 +147,7 @@
 
     @media (max-width: 600px) {
       .container { width: 94%; padding-top: 10px; }
-      .main-title { padding: 14px 18px; margin-bottom: 12px; }
+      .main-title { padding: 14px 18px; }
       .main-title h1 { font-size: 27px; }
       .step-grid { grid-template-columns: 1fr; }
       .disable-rule-row, .activation-rule-row { flex-direction: column; align-items: stretch; }
@@ -171,7 +161,6 @@
       .day-timer-value { font-size: 14px; }
       .day-timer-label { font-size: 10px; }
       .day-timer-hint { font-size: 9px; }
-      .active-box { padding-top: 12px; }
       .step-actions-bar { flex-direction: column; align-items: stretch; }
       .frequency-wrapper { align-items: stretch; flex-direction: column; }
       .frequency-label { min-width: 0; }
@@ -191,15 +180,12 @@
     .calendar-header h2 { margin: 0; }
     .calendar-nav { display: flex; align-items: center; gap: 10px; }
     .calendar-nav button { width: 36px; height: 36px; border: 1px solid #ddd; background: white; border-radius: 10px; font-size: 16px; display: flex; align-items: center; justify-content: center; padding: 0; }
-    .calendar-nav button:hover { background: #f5f5f7; }
     .calendar-month-label { font-weight: 700; font-size: 16px; min-width: 130px; text-align: center; }
     .calendar-weekdays { display: grid; grid-template-columns: repeat(7, 1fr); gap: 8px; margin-bottom: 8px; }
     .calendar-weekday-header { text-align: center; font-size: 13px; font-weight: 600; color: #888; padding: 6px 0; }
     .calendar-grid { display: grid; grid-template-columns: repeat(7, 1fr); gap: 8px; }
-    .calendar-day { background: #f8f8fa; border: 1px solid #eee; border-radius: 14px; padding: 12px 8px; min-height: 150px; display: flex; flex-direction: column; gap: 6px; cursor: pointer; transition: transform .12s ease, box-shadow .12s ease; }
+    .calendar-day { background: #f8f8fa; border: 1px solid #eee; border-radius: 14px; padding: 12px 8px; min-height: 150px; display: flex; flex-direction: column; gap: 6px; cursor: pointer; }
     .calendar-day.other-month { opacity: 0.38; background: #fafafa; cursor: default; }
-    .calendar-day.other-month:hover { transform: none; box-shadow: none; }
-    .calendar-day:hover { transform: translateY(-1px); box-shadow: 0 4px 14px rgba(0,0,0,.08); }
     .calendar-day.today { background: #111; color: white; border-color: #111; }
     .calendar-day.today .day-date-num { color: white; }
     .calendar-day.today .day-label { color: #ccc; }
@@ -212,7 +198,7 @@
     .day-label { font-size: 11px; font-weight: 600; color: #888; }
     .day-routines { display: flex; flex-direction: column; gap: 4px; flex: 1; overflow: hidden; }
     .day-routine { background: white; border: 1px solid #eaeaea; border-radius: 8px; padding: 5px 6px; }
-    .day-routine-name { font-weight: 600; font-size: 13px; line-height: 1.3; margin-bottom: 3px; }
+    .day-routine-name { font-weight: 600; font-size: 13px; margin-bottom: 3px; }
     .day-steps-list { display: flex; flex-direction: column; gap: 1px; }
     .day-step { font-size: 12px; color: #666; line-height: 1.35; }
     .day-step::before { content: "• "; color: #bbb; }
@@ -224,19 +210,19 @@
 
     .day-detail-overlay { position: fixed; inset: 0; background: rgba(0,0,0,.35); z-index: 2000; display: none; align-items: center; justify-content: center; padding: 16px; }
     .day-detail-overlay.show { display: flex; }
-    .day-detail-modal { background: white; border-radius: 22px; width: 100%; max-width: 520px; max-height: 85vh; overflow: auto; box-shadow: 0 20px 50px rgba(0,0,0,.18); padding: 22px 20px 26px; }
+    .day-detail-modal { background: white; border-radius: 22px; width: 100%; max-width: 520px; max-height: 85vh; overflow: auto; padding: 22px 20px 26px; }
     .day-detail-header { display: flex; justify-content: space-between; align-items: center; gap: 12px; margin-bottom: 18px; }
     .day-detail-header h2 { margin: 0; font-size: 20px; }
-    .day-detail-close { width: 36px; height: 36px; border: 0; background: #f5f5f7; border-radius: 10px; font-size: 20px; flex-shrink: 0; }
+    .day-detail-close { width: 36px; height: 36px; border: 0; background: #f5f5f7; border-radius: 10px; font-size: 20px; }
     .day-detail-routine { border: 1px solid #eee; border-radius: 14px; padding: 14px; margin-bottom: 12px; background: #fafafa; }
     .day-detail-routine-name { font-weight: 700; font-size: 16px; margin-bottom: 10px; }
-    .day-detail-step { background: white; border: 1px solid #eaeaea; border-radius: 10px; padding: 10px 12px; margin-bottom: 8px; font-size: 14px; line-height: 1.4; }
+    .day-detail-step { background: white; border: 1px solid #eaeaea; border-radius: 10px; padding: 10px 12px; margin-bottom: 8px; font-size: 14px; }
     .day-detail-step:last-child { margin-bottom: 0; }
     .day-detail-empty { text-align: center; color: #888; padding: 24px 10px; font-size: 15px; }
 
     .show-in-calendar-box { margin-top: 14px; padding: 12px 14px; border: 1px solid #e5e5e5; border-radius: 12px; background: #fafafa; display: flex; align-items: center; gap: 10px; }
     .show-in-calendar-box input[type="checkbox"] { width: 18px; height: 18px; accent-color: #111; flex-shrink: 0; cursor: pointer; }
-    .show-in-calendar-box label { font-weight: 600; font-size: 14px; cursor: pointer; margin: 0; user-select: none; }
+    .show-in-calendar-box label { font-weight: 600; font-size: 14px; cursor: pointer; margin: 0; }
     .show-in-calendar-box .hint { font-size: 12px; color: #888; font-weight: normal; display: block; margin-top: 2px; }
   </style>
 </head>
@@ -476,9 +462,13 @@ let timerInterval = null;
 let remainingSeconds = 0;
 let currentRoutineImage = "";
 let stepImages = new Map();
+let nextNotifInterval = null;
+let nextNotifSeconds = 90;
 
 const DAY_START_HOUR = 4;
+const WORKER_URL = "https://routine-reminder.privatelyemail.workers.dev";
 
+/* HELPERS */
 function getLogicalDate(date = new Date()) {
   const d = new Date(date.getTime());
   if (d.getHours() < DAY_START_HOUR) { d.setDate(d.getDate() - 1); }
@@ -486,9 +476,7 @@ function getLogicalDate(date = new Date()) {
   return d;
 }
 
-function getLogicalDayOfWeek(date = new Date()) {
-  return getLogicalDate(date).getDay();
-}
+function getLogicalDayOfWeek(date = new Date()) { return getLogicalDate(date).getDay(); }
 
 function getNextDayStart(date = new Date()) {
   const d = new Date(date.getTime());
@@ -515,6 +503,20 @@ function formatCountdown(ms) {
   return String(h).padStart(2, "0") + ":" + String(m).padStart(2, "0") + ":" + String(s).padStart(2, "0");
 }
 
+function escapeHtml(text) {
+  return String(text || '').replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+}
+
+function escapeAttr(text) { return String(text || '').replace(/"/g, "&quot;"); }
+
+function formatTextWithLinks(text) {
+  if (!text) return '';
+  const urlRegex = /(https?:\/\/[^\s]+)/g;
+  const escaped = escapeHtml(text);
+  return escaped.replace(urlRegex, (url) => `<a href="${url}" target="_blank" rel="noopener noreferrer">${url}</a>`);
+}
+
+/* DAY TIMER */
 let dayTimerInterval = null;
 let lastLogicalDayKey = null;
 
@@ -526,9 +528,8 @@ function updateDayTimer() {
   const remaining = next.getTime() - now.getTime();
   el.textContent = formatCountdown(remaining);
   const logicalKey = getLogicalDate(now).toDateString();
-  if (lastLogicalDayKey === null) {
-    lastLogicalDayKey = logicalKey;
-  } else if (logicalKey !== lastLogicalDayKey) {
+  if (lastLogicalDayKey === null) { lastLogicalDayKey = logicalKey; }
+  else if (logicalKey !== lastLogicalDayKey) {
     lastLogicalDayKey = logicalKey;
     if (currentUser) { loadRoutines(); }
   }
@@ -540,21 +541,7 @@ function startDayTimer() {
   dayTimerInterval = setInterval(updateDayTimer, 1000);
 }
 
-function escapeHtml(text) {
-  return String(text || '').replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
-}
-
-function escapeAttr(text) {
-  return String(text || '').replace(/"/g, "&quot;");
-}
-
-function formatTextWithLinks(text) {
-  if (!text) return '';
-  const urlRegex = /(https?:\/\/[^\s]+)/g;
-  const escaped = escapeHtml(text);
-  return escaped.replace(urlRegex, (url) => `<a href="${url}" target="_blank" rel="noopener noreferrer">${url}</a>`);
-}
-
+/* USER PANEL */
 const userTab = document.getElementById("userTab");
 const userPanel = document.getElementById("userPanel");
 const userPanelOverlay = document.getElementById("userPanelOverlay");
@@ -574,6 +561,7 @@ userTab.addEventListener("click", openUserPanel);
 closeUserPanel.addEventListener("click", closeUserPanelFunction);
 userPanelOverlay.addEventListener("click", closeUserPanelFunction);
 
+/* MAIN TABS */
 let currentMainTab = "routines";
 
 function switchMainTab(tab) {
@@ -610,16 +598,13 @@ function hideHomeUI() {
   document.getElementById("routineListScreen").style.display = "none";
 }
 
-document.getElementById("tabRoutines")?.addEventListener("click", () => { switchMainTab("routines"); });
-document.getElementById("tabCalendar")?.addEventListener("click", () => { switchMainTab("calendar"); });
+document.getElementById("tabRoutines")?.addEventListener("click", () => switchMainTab("routines"));
+document.getElementById("tabCalendar")?.addEventListener("click", () => switchMainTab("calendar"));
 
+/* LOGIN / LOGOUT */
 document.getElementById("loginBtn").addEventListener("click", async () => {
-  try {
-    await signInWithPopup(auth, provider);
-  } catch (error) {
-    console.error(error);
-    alert("ההתחברות נכשלה:\n\n" + error.message);
-  }
+  try { await signInWithPopup(auth, provider); }
+  catch (error) { console.error(error); alert("ההתחברות נכשלה:\n\n" + error.message); }
 });
 
 document.getElementById("logoutBtn").addEventListener("click", async () => {
@@ -629,18 +614,13 @@ document.getElementById("logoutBtn").addEventListener("click", async () => {
 
 document.getElementById("enableNotificationsBtn")?.addEventListener("click", async () => {
   const granted = await ensureNotificationPermission();
-  if (granted) {
-    alert("התראות דפדפן הופעלו בהצלחה");
-  } else if (Notification.permission === "denied") {
-    alert("ההרשאה נחסמה.\nלכי להגדרות → Safari → האתר → התראות והפעיל.");
-  } else {
-    alert("לא ניתנה הרשאה להתראות");
-  }
+  if (granted) { alert("התראות דפדפן הופעלו בהצלחה"); }
+  else if (Notification.permission === "denied") { alert("ההרשאה נחסמה.\nלכי להגדרות → Safari → האתר → התראות והפעל."); }
+  else { alert("לא ניתנה הרשאה להתראות"); }
 });
 
-/* ============ BARK ============ */
+/* BARK */
 let barkUrl = "";
-const WORKER_URL = "https://routine-reminder.privatelyemail.workers.dev";
 
 async function loadBarkConfig() {
   if (!currentUser) return;
@@ -683,7 +663,7 @@ document.getElementById("barkTestBtn")?.addEventListener("click", async () => {
   } catch (e) { alert("שגיאה: " + e.message); }
 });
 
-/* ============ SERVER REMINDER (Worker) ============ */
+/* SERVER REMINDER (Worker) */
 async function startServerReminder(step, duration) {
   if (!currentUser || !activeRoutine) return;
   const effectiveBarkUrl = barkUrl || (document.getElementById("barkUrlInput")?.value || "").trim();
@@ -717,50 +697,55 @@ async function startServerReminder(step, duration) {
 }
 
 async function triggerServerNow() {
-  try {
-    await fetch(`${WORKER_URL}/trigger-now`, { method: "POST" });
-  } catch (e) { console.warn("triggerServerNow failed:", e); }
-}
-  if (!currentUser || !activeRoutine) return;
-  const effectiveBarkUrl = barkUrl || (document.getElementById("barkUrlInput")?.value || "").trim();
-  if (!effectiveBarkUrl) return;
-
-  const baseUrl = window.location.origin + window.location.pathname;
-  const routineUrl = activeRoutine.notificationUrl
-    ? activeRoutine.notificationUrl
-    : baseUrl + "?routine=" + encodeURIComponent(activeRoutine.id);
-
-  let nextStepName = "";
-  if (activeSteps && activeStepIndex + 1 < activeSteps.length) {
-    const next = activeSteps[activeStepIndex + 1];
-    if (next && next.name) nextStepName = String(next.name);
-  }
-
-  try {
-    await fetch(`${WORKER_URL}/start`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        routineName: activeRoutine.name || "",
-        stepName: step.name || "",
-        nextStepName: nextStepName,
-        barkUrl: effectiveBarkUrl,
-        routineUrl: routineUrl
-      })
-    });
-  } catch (e) { console.warn("startServerReminder failed:", e); }
+  try { await fetch(`${WORKER_URL}/trigger-now`, { method: "POST" }); }
+  catch (e) { console.warn("triggerServerNow failed:", e); }
 }
 
 async function stopServerReminder() {
   if (!currentUser) return;
-  try {
-    await fetch(`${WORKER_URL}/stop`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" }
-    });
-  } catch (e) { console.warn("stopServerReminder failed:", e); }
+  try { await fetch(`${WORKER_URL}/stop`, { method: "POST" }); }
+  catch (e) { console.warn("stopServerReminder failed:", e); }
 }
 
+async function syncTimerWithServer() {
+  try {
+    const res = await fetch(`${WORKER_URL}/status`);
+    const data = await res.json();
+    if (data && data.active && data.lastSentAt) {
+      const elapsed = Math.floor((Date.now() - data.lastSentAt) / 1000);
+      nextNotifSeconds = Math.max(1, 90 - elapsed);
+    } else {
+      nextNotifSeconds = 90;
+    }
+  } catch (e) { nextNotifSeconds = 90; }
+  updateNextNotifDisplay();
+}
+
+/* NEXT NOTIF COUNTDOWN */
+function startNextNotifCountdown() {
+  stopNextNotifCountdown();
+  nextNotifSeconds = 90;
+  updateNextNotifDisplay();
+  nextNotifInterval = setInterval(() => {
+    nextNotifSeconds--;
+    if (nextNotifSeconds <= 0) { nextNotifSeconds = 90; }
+    updateNextNotifDisplay();
+  }, 1000);
+}
+
+function stopNextNotifCountdown() {
+  if (nextNotifInterval) { clearInterval(nextNotifInterval); nextNotifInterval = null; }
+}
+
+function updateNextNotifDisplay() {
+  const el = document.getElementById("nextNotifCountdown");
+  if (!el) return;
+  const m = String(Math.floor(nextNotifSeconds / 60)).padStart(2, '0');
+  const s = String(nextNotifSeconds % 60).padStart(2, '0');
+  el.textContent = `${m}:${s}`;
+}
+
+/* CLICK / SKIP */
 document.getElementById("activeStepCard").addEventListener("click", (e) => {
   if (e.target.tagName === 'A' || e.target.closest('a')) { return; }
   completeActiveStep();
@@ -792,6 +777,7 @@ onAuthStateChanged(auth, async (user) => {
   }
 });
 
+/* LOAD DATA */
 async function loadDisabledSteps() {
   try {
     const docRef = doc(db, "users", currentUser.uid, "meta", "disabledSteps");
@@ -816,6 +802,7 @@ async function loadActivatedSteps() {
   } catch (e) { console.error("Error loading activated steps:", e); }
 }
 
+/* ACTIVATION / DISABLE */
 function isStepTemporarilyActivated(stepId) {
   const until = getStepActivationUntilDate(stepId);
   if (!until) return false;
@@ -913,6 +900,7 @@ function renderRoutines() {
   renderCalendar();
 }
 
+/* CALENDAR */
 const HEBREW_MONTHS = ["ינואר", "פברואר", "מרץ", "אפריל", "מאי", "יוני", "יולי", "אוגוסט", "ספטמבר", "אוקטובר", "נובמבר", "דצמבר"];
 const HEBREW_DAY_SHORT = ["א׳", "ב׳", "ג׳", "ד׳", "ה׳", "ו׳", "ש׳"];
 
@@ -926,9 +914,7 @@ function getDateLabel(date, today, tomorrow) {
   return "";
 }
 
-function isRoutineWaitingActivation(routine) {
-  return !routine.days || routine.days.length === 0;
-}
+function isRoutineWaitingActivation(routine) { return !routine.days || routine.days.length === 0; }
 
 function endOfDay(date) { const d = new Date(date); d.setHours(23, 59, 59, 999); return d; }
 function startOfDay(date) { const d = new Date(date); d.setHours(0, 0, 0, 0); return d; }
@@ -1144,6 +1130,7 @@ document.getElementById("calNextBtn")?.addEventListener("click", () => {
   renderCalendar();
 });
 
+/* DAY DETAIL */
 function formatDayDetailTitle(date) {
   const today = getLogicalDate();
   const tomorrow = new Date(today);
@@ -1209,6 +1196,7 @@ document.getElementById("dayDetailOverlay")?.addEventListener("click", (e) => {
   if (e.target.id === "dayDetailOverlay") { closeDayDetail(); }
 });
 
+/* IMAGE */
 function compressImage(file) {
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
@@ -1264,14 +1252,14 @@ function showRoutineImagePreview() {
   preview.appendChild(remove);
 }
 
+/* COPY LINK */
 async function copyRoutineLink(routineId) {
   const url = window.location.origin + window.location.pathname + "?routine=" + encodeURIComponent(routineId);
-  try {
-    await navigator.clipboard.writeText(url);
-    alert("הקישור הועתק!");
-  } catch (error) { prompt("העתק את הקישור:", url); }
+  try { await navigator.clipboard.writeText(url); alert("הקישור הועתק!"); }
+  catch (error) { prompt("העתק את הקישור:", url); }
 }
 
+/* DIRECT LINK */
 async function openRoutineFromLink() {
   const params = new URLSearchParams(window.location.search);
   const routineId = params.get("routine");
@@ -1282,7 +1270,6 @@ async function openRoutineFromLink() {
   window.history.replaceState({}, "", window.location.origin + window.location.pathname);
 
   if (activeRoutine) { return; }
-
   await startRoutine(routine);
 }
 
@@ -1328,16 +1315,14 @@ document.getElementById("directBackBtn").addEventListener("click", () => {
 
 document.getElementById("newRoutineBtn").addEventListener("click", () => openEditor(null));
 
+/* STEP LIBRARY */
 function getAllStepsList() {
   const list = [];
   const map = new Map();
   routines.forEach(routine => {
     if (routine.steps) {
       routine.steps.forEach(step => {
-        if (step.id && !map.has(step.id)) {
-          map.set(step.id, step);
-          list.push(step);
-        }
+        if (step.id && !map.has(step.id)) { map.set(step.id, step); list.push(step); }
       });
     }
   });
@@ -1387,6 +1372,7 @@ function updateActivationOptionsInEditor() {
   });
 }
 
+/* EDITOR */
 function openEditor(routine) {
   hideHomeUI();
   document.getElementById("directRoutineScreen").style.display = "none";
@@ -1494,11 +1480,8 @@ function getDragAfterElement(container, y) {
   return draggableElements.reduce((closest, child) => {
     const box = child.getBoundingClientRect();
     const offset = y - box.top - box.height / 2;
-    if (offset < 0 && offset > closest.offset) {
-      return { offset, element: child };
-    } else {
-      return closest;
-    }
+    if (offset < 0 && offset > closest.offset) { return { offset, element: child }; }
+    else { return closest; }
   }, { offset: Number.NEGATIVE_INFINITY }).element;
 }
 
@@ -1607,11 +1590,7 @@ function addStep(step = null) {
       div.classList.remove("activation-only");
       frequencyLabel.classList.remove("special");
       activationLabel.classList.add("hidden");
-      if (Number.isFinite(value) && value > 0) {
-        frequencyLabel.textContent = value === 1 ? "יום" : "ימים";
-      } else {
-        frequencyLabel.textContent = "ימים";
-      }
+      frequencyLabel.textContent = (Number.isFinite(value) && value === 1) ? "יום" : "ימים";
     }
   }
 
@@ -1733,6 +1712,7 @@ document.getElementById("cancelEditorBtn").addEventListener("click", () => {
   showHomeUI();
 });
 
+/* SAVE ROUTINE */
 document.getElementById("saveRoutineBtn").addEventListener("click", async () => {
   const name = document.getElementById("routineName").value.trim();
   if (!name) { alert("נא להזין שם לשגרה"); return; }
@@ -1835,6 +1815,7 @@ document.getElementById("saveRoutineBtn").addEventListener("click", async () => 
   }
 });
 
+/* RESET ROUTINE */
 async function resetRoutine(routine) {
   if (!confirm("לאפס את השגרה להיום?\nכל ה-Steps יופיעו שוב ליום הנוכחי (עד 04:00).")) { return; }
   const stepIds = (routine.steps || []).map(s => s.id).filter(Boolean);
@@ -1850,6 +1831,7 @@ async function resetRoutine(routine) {
   } catch (e) { console.error(e); alert("שגיאה באיפוס: " + e.message); }
 }
 
+/* DELETE ROUTINE */
 async function deleteRoutine(id) {
   if (!confirm("האם למחוק שגרה זו?")) { return; }
   try {
@@ -1858,11 +1840,10 @@ async function deleteRoutine(id) {
   } catch (e) { alert("שגיאה במחיקה: " + e.message); }
 }
 
+/* SCHEDULE */
 const ROUTINE_SCHEDULE_CHECK_MS = 5000;
 const ROUTINE_SCHEDULE_STORAGE_KEY = "routine_schedule_last_run";
 let routineScheduleInterval = null;
-
-function getTodayDayNumber() { return new Date().getDay(); }
 
 function isRoutineScheduledToday(routine) {
   return !!(routine && Array.isArray(routine.days) && routine.days.includes(getLogicalDayOfWeek()));
@@ -1925,6 +1906,7 @@ function startRoutineScheduleWatcher() {
   checkRoutineSchedules();
 }
 
+/* START ROUTINE */
 async function startRoutine(routine, options = {}) {
   await ensureNotificationPermission();
   if (options.scheduled) { fireRoutineStartNotification(routine); }
@@ -1937,9 +1919,10 @@ async function startRoutine(routine, options = {}) {
   document.getElementById("editorScreen").classList.add("hidden");
   document.getElementById("activeScreen").style.display = "block";
   document.getElementById("activeRoutineName").textContent = routine.name;
-  runStep();
+  await runStep();
 }
 
+/* RUN STEP */
 async function runStep() {
   hideStepFinishedPanel();
   if (timerInterval) { clearInterval(timerInterval); }
@@ -1963,7 +1946,6 @@ async function runStep() {
   remainingSeconds = currentStep.duration || 60;
   updateTimerDisplay();
 
-  /* הודע לשרת שהתחיל Step חדש */
   await startServerReminder(currentStep, remainingSeconds);
 
   timerInterval = setInterval(() => {
@@ -1978,76 +1960,12 @@ async function runStep() {
     }
   }, 1000);
 }
-  hideStepFinishedPanel();
-  if (timerInterval) { clearInterval(timerInterval); }
-  if (activeStepIndex >= activeSteps.length) {
-    alert("כל הכבוד! סיימת את השגרה!");
-    exitActiveScreen();
-    return;
-  }
-  const currentStep = activeSteps[activeStepIndex];
-  document.getElementById("activeStepName").innerHTML = formatTextWithLinks(currentStep.name);
 
-  const activeImg = document.getElementById("activeStepImage");
-  if (currentStep.image) {
-    activeImg.src = currentStep.image;
-    activeImg.classList.remove("hidden");
-  } else {
-    activeImg.src = "";
-    activeImg.classList.add("hidden");
-  }
-
-  remainingSeconds = currentStep.duration || 60;
-  updateTimerDisplay();
-
-  timerInterval = setInterval(() => {
-    remainingSeconds--;
-    updateTimerDisplay();
-    if (remainingSeconds <= 0) {
-      remainingSeconds = 0;
-      updateTimerDisplay();
-      if (timerInterval) { clearInterval(timerInterval); timerInterval = null; }
-      const finishedStep = activeSteps[activeStepIndex];
-      notifyStepFinished(finishedStep);
-    }
-  }, 1000);
-}
-
+/* NOTIFICATIONS */
 let stepTimerFinished = false;
 let activeNotification = null;
 let stepReminderInterval = null;
 const STEP_REMINDER_MS = 90 * 1000;
-
-let nextNotifInterval = null;
-let nextNotifSeconds = 90;
-
-function startNextNotifCountdown() {
-  stopNextNotifCountdown();
-  nextNotifSeconds = 90;
-  updateNextNotifDisplay();
-  nextNotifInterval = setInterval(() => {
-    nextNotifSeconds--;
-    if (nextNotifSeconds <= 0) {
-      nextNotifSeconds = 90;
-    }
-    updateNextNotifDisplay();
-  }, 1000);
-}
-
-function stopNextNotifCountdown() {
-  if (nextNotifInterval) {
-    clearInterval(nextNotifInterval);
-    nextNotifInterval = null;
-  }
-}
-
-function updateNextNotifDisplay() {
-  const el = document.getElementById("nextNotifCountdown");
-  if (!el) return;
-  const m = String(Math.floor(nextNotifSeconds / 60)).padStart(2, '0');
-  const s = String(nextNotifSeconds % 60).padStart(2, '0');
-  el.textContent = `${m}:${s}`;
-}
 
 async function ensureNotificationPermission() {
   if (!("Notification" in window)) { return false; }
@@ -2113,13 +2031,13 @@ function fireStepFinishedNotification(step, isReminder) {
   } catch (e) { console.warn("Notification failed:", e); }
 }
 
-function notifyStepFinished(step) {   showStepFinishedPanel();   fireStepFinishedNotification(step, false);   playStepBeep();    /* הודע לשרת שהזמן נגמר — ישלח התראה מיידית */   triggerServerNow();    /* סנכרן את הטיימר של ההתראה הבאה */   syncTimerWithServer();   startNextNotifCountdown(); }
+function notifyStepFinished(step) {
   showStepFinishedPanel();
   fireStepFinishedNotification(step, false);
   playStepBeep();
 
-  startServerReminder(step);
-  startNextNotifCountdown();
+  triggerServerNow();
+  syncTimerWithServer();
 
   stopStepReminders();
   stepReminderInterval = setInterval(() => {
@@ -2162,6 +2080,7 @@ function updateTimerDisplay() {
   document.getElementById("timer").textContent = `${m}:${s}`;
 }
 
+/* COMPLETE STEP */
 async function completeActiveStep() {
   if (timerInterval) { clearInterval(timerInterval); timerInterval = null; }
   const currentStep = activeSteps[activeStepIndex];
@@ -2215,7 +2134,7 @@ async function completeActiveStep() {
   }
 
   activeStepIndex++;
-  runStep();
+  await runStep();
 }
 
 function skipActiveStep() {

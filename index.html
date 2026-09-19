@@ -1940,7 +1940,44 @@ async function startRoutine(routine, options = {}) {
   runStep();
 }
 
-function runStep() {
+async function runStep() {
+  hideStepFinishedPanel();
+  if (timerInterval) { clearInterval(timerInterval); }
+  if (activeStepIndex >= activeSteps.length) {
+    alert("כל הכבוד! סיימת את השגרה!");
+    exitActiveScreen();
+    return;
+  }
+  const currentStep = activeSteps[activeStepIndex];
+  document.getElementById("activeStepName").innerHTML = formatTextWithLinks(currentStep.name);
+
+  const activeImg = document.getElementById("activeStepImage");
+  if (currentStep.image) {
+    activeImg.src = currentStep.image;
+    activeImg.classList.remove("hidden");
+  } else {
+    activeImg.src = "";
+    activeImg.classList.add("hidden");
+  }
+
+  remainingSeconds = currentStep.duration || 60;
+  updateTimerDisplay();
+
+  /* הודע לשרת שהתחיל Step חדש */
+  await startServerReminder(currentStep, remainingSeconds);
+
+  timerInterval = setInterval(() => {
+    remainingSeconds--;
+    updateTimerDisplay();
+    if (remainingSeconds <= 0) {
+      remainingSeconds = 0;
+      updateTimerDisplay();
+      if (timerInterval) { clearInterval(timerInterval); timerInterval = null; }
+      const finishedStep = activeSteps[activeStepIndex];
+      notifyStepFinished(finishedStep);
+    }
+  }, 1000);
+}
   hideStepFinishedPanel();
   if (timerInterval) { clearInterval(timerInterval); }
   if (activeStepIndex >= activeSteps.length) {

@@ -354,6 +354,7 @@ window.__ROUTINE_APP_LOADED = true;
 let currentUser = null;
 let routines = [];
 let disabledStepsMap = {};
+let disabledAtMap = {};
 let activationRulesMap = {};
 let activatedStepsMap = {};
 let editingRoutineId = null;
@@ -375,7 +376,6 @@ let syncPollInterval = null;
 const DAY_START_HOUR = 4;
 const WORKER_URL = "https://routine-reminder.privatelyemail.workers.dev";
 const NEXT_NOTIF_STORAGE_KEY = "routine_next_notif_at";
-/* כל 1:30 דקות = 90 שניות */
 const NOTIF_INTERVAL_MS = 90 * 1000;
 
 function getLogicalDate(date = new Date()) {
@@ -631,7 +631,6 @@ async function syncTimerWithServer() {
   } catch (e) {}
 }
 
-/* NEXT NOTIF COUNTDOWN */
 function saveNextNotifToStorage() {
   try {
     if (nextNotifAt > 0) {
@@ -669,11 +668,9 @@ function startNextNotifCountdown() {
 
   updateNextNotifDisplay();
 
-  /* תצוגה כל 100ms + קידום מקומי כדי לא להיתקע */
   nextNotifInterval = setInterval(() => {
     if (Date.now() >= nextNotifAt) {
       nextNotifAt = nextNotifAt + NOTIF_INTERVAL_MS;
-      /* אם פספסנו כמה מחזורים (הטאב היה מושהה) — תאפס ל-now+interval */
       if (nextNotifAt < Date.now() - 5000) {
         nextNotifAt = Date.now() + NOTIF_INTERVAL_MS;
       }
@@ -682,7 +679,6 @@ function startNextNotifCountdown() {
     updateNextNotifDisplay();
   }, 100);
 
-  /* סנכרון עם השרת כל 5 שניות */
   nextNotifSyncInterval = setInterval(async () => {
     await syncNextNotifFromServer();
   }, 5000);
@@ -701,16 +697,13 @@ async function syncNextNotifFromServer() {
     const data = await res.json();
     if (!data || !data.active || !data.stepNotified) return;
     if (!data.lastSentAt) return;
-
     const serverNext = data.lastSentAt + NOTIF_INTERVAL_MS;
-
-    /* סנכרן קדימה בלבד */
     if (serverNext > nextNotifAt) {
       nextNotifAt = serverNext;
       saveNextNotifToStorage();
     }
     updateNextNotifDisplay();
-  } catch (e) { console.warn("syncNextNotifFromServer failed:", e); }
+  } catch (e) {}
 }
 
 function updateNextNotifDisplay() {
@@ -775,6 +768,9 @@ async function loadDisabledSteps() {
     const docRef = doc(db, "users", currentUser.uid, "meta", "disabledSteps");
     const docSnap = await getDoc(docRef);
     disabledStepsMap = docSnap.exists() ? docSnap.data() : {};
+    const atRef = doc(db, "users", currentUser.uid, "meta", "disabledStepsAt");
+    const atSnap = await getDoc(atRef);
+    disabledAtMap = atSnap.exists() ? atSnap.data() : {};
   } catch (e) {}
 }
 async function loadActivationRules() {
@@ -862,7 +858,7 @@ function renderRoutines() {
       ${todayInfoHtml}
       <div class="actions">
         <button class="primary start">התחל</button>
-        <button class="secondary reset">איפוס</button>
+        <button class="secondary reset">איפוס יום</button>
         <button class="secondary edit">ערוך</button>
         <button class="secondary share">🔗 העתק קישור</button>
         <button class="danger delete">מחק</button>
@@ -1634,9 +1630,11 @@ document.getElementById("saveRoutineBtn").addEventListener("click", async () => 
     const logicalToday = getLogicalDate();
     if (isSameDate(dueDay, logicalToday) || dueDay.getTime() < logicalToday.getTime()) {
       if (disabledStepsMap[s.id]) { delete disabledStepsMap[s.id]; disabledMapChanged = true; }
+      if (disabledAtMap[s.id]) { delete disabledAtMap[s.id]; }
     } else {
       const iso = dueDay.toISOString();
       if (disabledStepsMap[s.id] !== iso) { disabledStepsMap[s.id] = iso; disabledMapChanged = true; }
+      if (disabledAtMap[s.id]) { delete disabledAtMap[s.id]; }
     }
   });
 
@@ -1647,6 +1645,8 @@ document.getElementById("saveRoutineBtn").addEventListener("click", async () => 
     if (disabledMapChanged) {
       const disabledRef = doc(db, "users", currentUser.uid, "meta", "disabledSteps");
       await setDoc(disabledRef, disabledStepsMap);
+      const atRef = doc(db, "users", currentUser.uid, "meta", "disabledStepsAt");
+      await setDoc(atRef, disabledAtMap);
     }
     if (editingRoutineId) {
       const docRef = doc(db, "users", currentUser.uid, "routines", editingRoutineId);
@@ -1664,17 +1664,35 @@ document.getElementById("saveRoutineBtn").addEventListener("click", async () => 
 });
 
 async function resetRoutine(routine) {
-  if (!confirm("לאפס את השגרה להיום?\nכל ה-Steps יופיעו שוב ליום הנוכחי (עד 04:00).")) { return; }
+  if (!confirm("לאפס את השגרה להיום?\nרק Steps שבוצעו היום יחזרו להיות זמינים.")) { return; }
   const stepIds = (routine.steps || []).map(s => s.id).filter(Boolean);
   if (stepIds.length === 0) { alert("אין Steps לאיפוס בשגרה זו."); return; }
+
+  const todayStart = getLogicalDate().getTime();
+  const tomorrowStart = todayStart + 24 * 60 * 60 * 1000;
+
   let changed = false;
-  stepIds.forEach(id => { if (disabledStepsMap[id]) { delete disabledStepsMap[id]; changed = true; } });
-  if (!changed) { alert("השגרה כבר במצב מאופס להיום — אין מה לאפס."); renderRoutines(); return; }
+  stepIds.forEach(id => {
+    const at = disabledAtMap[id];
+    if (typeof at === "number" && at >= todayStart && at < tomorrowStart) {
+      if (disabledStepsMap[id]) { delete disabledStepsMap[id]; changed = true; }
+      delete disabledAtMap[id];
+    }
+  });
+
+  if (!changed) {
+    alert("אין Steps שבוצעו היום לאיפוס.");
+    renderRoutines();
+    return;
+  }
+
   try {
     const docRef = doc(db, "users", currentUser.uid, "meta", "disabledSteps");
     await setDoc(docRef, disabledStepsMap);
+    const atRef = doc(db, "users", currentUser.uid, "meta", "disabledStepsAt");
+    await setDoc(atRef, disabledAtMap);
     await loadRoutines();
-    alert("השגרה אופסה להיום. כל ה-Steps זמינים שוב.");
+    alert("ה-Steps שבוצעו היום אופסו.");
   } catch (e) { alert("שגיאה באיפוס: " + e.message); }
 }
 
@@ -1901,31 +1919,41 @@ async function completeActiveStep() {
   if (timerInterval) { clearInterval(timerInterval); timerInterval = null; }
   const currentStep = activeSteps[activeStepIndex];
   if (!currentStep) { return; }
+
   let rulesToApply = [...(currentStep.disableRules || [])];
   if (rulesToApply.length === 0 && currentStep.disableTargetId) {
     const fallbackHours = currentStep.disableHours !== undefined ? currentStep.disableHours : ((currentStep.disableDays || 1) * 24);
     rulesToApply = [{ targetId: currentStep.disableTargetId, hours: fallbackHours }];
   }
+
   const waitingRoutine = activeRoutine && isRoutineWaitingActivation(activeRoutine);
   const now = new Date();
+
   if (Number(currentStep.frequency) > 0 && !waitingRoutine) {
     const untilDate = getDisableUntilForFrequency(currentStep.frequency, now);
     disabledStepsMap[currentStep.id] = untilDate.toISOString();
+    disabledAtMap[currentStep.id] = now.getTime();
   }
+
   if (rulesToApply.length > 0) {
     rulesToApply.forEach(rule => {
       if (!rule.targetId) return;
       const untilDate = new Date(now.getTime() + (rule.hours * 60 * 60 * 1000));
       disabledStepsMap[rule.targetId] = untilDate.toISOString();
+      disabledAtMap[rule.targetId] = now.getTime();
     });
   }
+
   const hasDisableUpdates = (Number(currentStep.frequency) > 0 && !waitingRoutine) || rulesToApply.length > 0;
   if (hasDisableUpdates) {
     try {
       const docRef = doc(db, "users", currentUser.uid, "meta", "disabledSteps");
       await setDoc(docRef, disabledStepsMap, { merge: true });
+      const atRef = doc(db, "users", currentUser.uid, "meta", "disabledStepsAt");
+      await setDoc(atRef, disabledAtMap, { merge: true });
     } catch (e) {}
   }
+
   const activationRules = activationRulesMap[currentStep.id] || currentStep.activationRules || [];
   if (activationRules.length > 0) {
     activationRules.forEach(rule => {
@@ -1942,6 +1970,7 @@ async function completeActiveStep() {
       await setDoc(activationDocRef, activatedStepsMap, { merge: true });
     } catch (e) {}
   }
+
   activeStepIndex++;
   await runStep();
 }

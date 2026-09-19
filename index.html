@@ -304,7 +304,7 @@ input,select{width:100%;padding:13px;border:1px solid #ddd;border-radius:10px;ba
         <div id="stepFinishedPanel" class="step-finished-panel">
           <div class="finished-title">הזמן ל-Step הזה נגמר</div>
           <div class="finished-hint">רוצה לסמן כבוצע ולהמשיך ל-Step הבא?</div>
-          <div class="next-notif-countdown">התראה הבאה בעוד: <span id="nextNotifCountdown">02:00</span></div>
+          <div class="next-notif-countdown">התראה הבאה בעוד: <span id="nextNotifCountdown">01:30</span></div>
           <div class="step-finished-actions">
             <button type="button" id="continueNextStepBtn" class="continue-btn">✓ המשך ל-Step הבא</button>
             <button type="button" id="waitOnStepBtn" class="wait-btn">עוד רגע</button>
@@ -375,8 +375,8 @@ let syncPollInterval = null;
 const DAY_START_HOUR = 4;
 const WORKER_URL = "https://routine-reminder.privatelyemail.workers.dev";
 const NEXT_NOTIF_STORAGE_KEY = "routine_next_notif_at";
-/* כל 2 דקות = 120,000 ms */
-const NOTIF_INTERVAL_MS = 120 * 1000;
+/* כל 1:30 דקות = 90 שניות */
+const NOTIF_INTERVAL_MS = 90 * 1000;
 
 function getLogicalDate(date = new Date()) {
   const d = new Date(date.getTime());
@@ -656,36 +656,63 @@ function clearNextNotifFromStorage() {
   try { localStorage.removeItem(NEXT_NOTIF_STORAGE_KEY); } catch (e) {}
   nextNotifAt = 0;
 }
+
 function startNextNotifCountdown() {
   stopNextNotifCountdown();
+
   if (!nextNotifAt) { loadNextNotifFromStorage(); }
+
   if (!nextNotifAt || nextNotifAt < Date.now() - 5000) {
     nextNotifAt = Date.now() + NOTIF_INTERVAL_MS;
     saveNextNotifToStorage();
   }
+
   updateNextNotifDisplay();
-  nextNotifInterval = setInterval(() => { updateNextNotifDisplay(); }, 100);
-  nextNotifSyncInterval = setInterval(async () => { await syncNextNotifFromServer(); }, 5000);
+
+  /* תצוגה כל 100ms + קידום מקומי כדי לא להיתקע */
+  nextNotifInterval = setInterval(() => {
+    if (Date.now() >= nextNotifAt) {
+      nextNotifAt = nextNotifAt + NOTIF_INTERVAL_MS;
+      /* אם פספסנו כמה מחזורים (הטאב היה מושהה) — תאפס ל-now+interval */
+      if (nextNotifAt < Date.now() - 5000) {
+        nextNotifAt = Date.now() + NOTIF_INTERVAL_MS;
+      }
+      saveNextNotifToStorage();
+    }
+    updateNextNotifDisplay();
+  }, 100);
+
+  /* סנכרון עם השרת כל 5 שניות */
+  nextNotifSyncInterval = setInterval(async () => {
+    await syncNextNotifFromServer();
+  }, 5000);
+
   syncNextNotifFromServer();
 }
+
 function stopNextNotifCountdown() {
   if (nextNotifInterval) { clearInterval(nextNotifInterval); nextNotifInterval = null; }
   if (nextNotifSyncInterval) { clearInterval(nextNotifSyncInterval); nextNotifSyncInterval = null; }
 }
+
 async function syncNextNotifFromServer() {
   try {
     const res = await fetch(`${WORKER_URL}/status`);
     const data = await res.json();
     if (!data || !data.active || !data.stepNotified) return;
     if (!data.lastSentAt) return;
+
     const serverNext = data.lastSentAt + NOTIF_INTERVAL_MS;
+
+    /* סנכרן קדימה בלבד */
     if (serverNext > nextNotifAt) {
       nextNotifAt = serverNext;
       saveNextNotifToStorage();
     }
     updateNextNotifDisplay();
-  } catch (e) {}
+  } catch (e) { console.warn("syncNextNotifFromServer failed:", e); }
 }
+
 function updateNextNotifDisplay() {
   const el = document.getElementById("nextNotifCountdown");
   if (!el) return;
@@ -733,6 +760,7 @@ document.addEventListener("visibilitychange", async () => {
     if (finishedStep) notifyStepFinished(finishedStep);
   }
 });
+
 function startSyncPolling() {
   if (syncPollInterval) clearInterval(syncPollInterval);
   syncPollInterval = setInterval(() => {

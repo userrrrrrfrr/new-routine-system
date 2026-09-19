@@ -304,7 +304,7 @@ input,select{width:100%;padding:13px;border:1px solid #ddd;border-radius:10px;ba
         <div id="stepFinishedPanel" class="step-finished-panel">
           <div class="finished-title">הזמן ל-Step הזה נגמר</div>
           <div class="finished-hint">רוצה לסמן כבוצע ולהמשיך ל-Step הבא?</div>
-          <div class="next-notif-countdown">התראה הבאה בעוד: <span id="nextNotifCountdown">01:30</span></div>
+          <div class="next-notif-countdown">התראה הבאה בעוד: <span id="nextNotifCountdown">02:00</span></div>
           <div class="step-finished-actions">
             <button type="button" id="continueNextStepBtn" class="continue-btn">✓ המשך ל-Step הבא</button>
             <button type="button" id="waitOnStepBtn" class="wait-btn">עוד רגע</button>
@@ -350,7 +350,6 @@ const db = getFirestore(app);
 const provider = new GoogleAuthProvider();
 
 window.__ROUTINE_APP_LOADED = true;
-console.log("Routine app loaded");
 
 let currentUser = null;
 let routines = [];
@@ -376,6 +375,8 @@ let syncPollInterval = null;
 const DAY_START_HOUR = 4;
 const WORKER_URL = "https://routine-reminder.privatelyemail.workers.dev";
 const NEXT_NOTIF_STORAGE_KEY = "routine_next_notif_at";
+/* כל 2 דקות = 120,000 ms */
+const NOTIF_INTERVAL_MS = 120 * 1000;
 
 function getLogicalDate(date = new Date()) {
   const d = new Date(date.getTime());
@@ -486,7 +487,7 @@ document.getElementById("tabCalendar")?.addEventListener("click", () => switchMa
 
 document.getElementById("loginBtn").addEventListener("click", async () => {
   try { await signInWithPopup(auth, provider); }
-  catch (error) { console.error(error); alert("ההתחברות נכשלה:\n\n" + error.message); }
+  catch (error) { alert("ההתחברות נכשלה:\n\n" + error.message); }
 });
 document.getElementById("logoutBtn").addEventListener("click", async () => {
   await signOut(auth);
@@ -513,7 +514,7 @@ async function loadBarkConfig() {
         s.className = "tg-status ok";
       }
     }
-  } catch (e) { console.warn(e); }
+  } catch (e) {}
 }
 document.getElementById("barkSaveBtn")?.addEventListener("click", async () => {
   if (!currentUser) return;
@@ -565,7 +566,7 @@ async function startServerReminder(step, duration) {
         routineUrl: routineUrl
       })
     });
-  } catch (e) { console.warn(e); }
+  } catch (e) {}
 }
 
 async function sendBarkImmediate(step) {
@@ -596,18 +597,18 @@ async function sendBarkImmediate(step) {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(payload)
     });
-  } catch (e) { console.warn(e); }
+  } catch (e) {}
 }
 
 async function markNotifiedOnServer() {
   try { await fetch(`${WORKER_URL}/mark-notified`, { method: "POST" }); }
-  catch (e) { console.warn(e); }
+  catch (e) {}
 }
 
 async function stopServerReminder() {
   if (!currentUser) return;
   try { await fetch(`${WORKER_URL}/stop`, { method: "POST" }); }
-  catch (e) { console.warn(e); }
+  catch (e) {}
 }
 
 async function syncTimerWithServer() {
@@ -620,18 +621,17 @@ async function syncTimerWithServer() {
       updateTimerDisplay();
     }
     if (data.stepNotified && data.lastSentAt) {
-      const serverNext = data.lastSentAt + 90 * 1000;
+      const serverNext = data.lastSentAt + NOTIF_INTERVAL_MS;
       if (serverNext > nextNotifAt) {
         nextNotifAt = serverNext;
         saveNextNotifToStorage();
       }
       updateNextNotifDisplay();
     }
-  } catch (e) { console.warn(e); }
+  } catch (e) {}
 }
 
-/* ============ NEXT NOTIF COUNTDOWN WITH PERSISTENCE ============ */
-
+/* NEXT NOTIF COUNTDOWN */
 function saveNextNotifToStorage() {
   try {
     if (nextNotifAt > 0) {
@@ -639,7 +639,6 @@ function saveNextNotifToStorage() {
     }
   } catch (e) {}
 }
-
 function loadNextNotifFromStorage() {
   try {
     const val = localStorage.getItem(NEXT_NOTIF_STORAGE_KEY);
@@ -653,57 +652,40 @@ function loadNextNotifFromStorage() {
   } catch (e) {}
   return false;
 }
-
 function clearNextNotifFromStorage() {
   try { localStorage.removeItem(NEXT_NOTIF_STORAGE_KEY); } catch (e) {}
   nextNotifAt = 0;
 }
-
 function startNextNotifCountdown() {
   stopNextNotifCountdown();
-
-  if (!nextNotifAt) {
-    loadNextNotifFromStorage();
-  }
-
+  if (!nextNotifAt) { loadNextNotifFromStorage(); }
   if (!nextNotifAt || nextNotifAt < Date.now() - 5000) {
-    nextNotifAt = Date.now() + 90 * 1000;
+    nextNotifAt = Date.now() + NOTIF_INTERVAL_MS;
     saveNextNotifToStorage();
   }
-
   updateNextNotifDisplay();
-
-  nextNotifInterval = setInterval(() => {
-    updateNextNotifDisplay();
-  }, 100);
-
-  nextNotifSyncInterval = setInterval(async () => {
-    await syncNextNotifFromServer();
-  }, 5000);
-
+  nextNotifInterval = setInterval(() => { updateNextNotifDisplay(); }, 100);
+  nextNotifSyncInterval = setInterval(async () => { await syncNextNotifFromServer(); }, 5000);
   syncNextNotifFromServer();
 }
-
 function stopNextNotifCountdown() {
   if (nextNotifInterval) { clearInterval(nextNotifInterval); nextNotifInterval = null; }
   if (nextNotifSyncInterval) { clearInterval(nextNotifSyncInterval); nextNotifSyncInterval = null; }
 }
-
 async function syncNextNotifFromServer() {
   try {
     const res = await fetch(`${WORKER_URL}/status`);
     const data = await res.json();
     if (!data || !data.active || !data.stepNotified) return;
     if (!data.lastSentAt) return;
-    const serverNext = data.lastSentAt + 90 * 1000;
+    const serverNext = data.lastSentAt + NOTIF_INTERVAL_MS;
     if (serverNext > nextNotifAt) {
       nextNotifAt = serverNext;
       saveNextNotifToStorage();
     }
     updateNextNotifDisplay();
-  } catch (e) { console.warn(e); }
+  } catch (e) {}
 }
-
 function updateNextNotifDisplay() {
   const el = document.getElementById("nextNotifCountdown");
   if (!el) return;
@@ -751,7 +733,6 @@ document.addEventListener("visibilitychange", async () => {
     if (finishedStep) notifyStepFinished(finishedStep);
   }
 });
-
 function startSyncPolling() {
   if (syncPollInterval) clearInterval(syncPollInterval);
   syncPollInterval = setInterval(() => {
@@ -766,23 +747,22 @@ async function loadDisabledSteps() {
     const docRef = doc(db, "users", currentUser.uid, "meta", "disabledSteps");
     const docSnap = await getDoc(docRef);
     disabledStepsMap = docSnap.exists() ? docSnap.data() : {};
-  } catch (e) { console.error(e); }
+  } catch (e) {}
 }
 async function loadActivationRules() {
   try {
     const docRef = doc(db, "users", currentUser.uid, "meta", "stepActivationRules");
     const docSnap = await getDoc(docRef);
     activationRulesMap = docSnap.exists() ? docSnap.data() : {};
-  } catch (e) { console.error(e); activationRulesMap = {}; }
+  } catch (e) { activationRulesMap = {}; }
 }
 async function loadActivatedSteps() {
   try {
     const docRef = doc(db, "users", currentUser.uid, "meta", "activatedSteps");
     const docSnap = await getDoc(docRef);
     activatedStepsMap = docSnap.exists() ? docSnap.data() : {};
-  } catch (e) { console.error(e); }
+  } catch (e) {}
 }
-
 function isStepTemporarilyActivated(stepId) {
   const until = getStepActivationUntilDate(stepId);
   if (!until) return false;
@@ -825,7 +805,6 @@ async function loadRoutines() {
     renderRoutines();
     openRoutineFromLink();
   } catch (error) {
-    console.error(error);
     list.innerHTML = `<div class="empty">לא ניתן לטעון את השגרות.<br><br>${escapeHtml(error.message)}</div>`;
   }
 }
@@ -1652,7 +1631,6 @@ document.getElementById("saveRoutineBtn").addEventListener("click", async () => 
     showHomeUI();
     await loadRoutines();
   } catch (e) {
-    console.error(e);
     alert("שגיאה בשמירת השגרה: " + e.message);
   }
 });
@@ -1669,7 +1647,7 @@ async function resetRoutine(routine) {
     await setDoc(docRef, disabledStepsMap);
     await loadRoutines();
     alert("השגרה אופסה להיום. כל ה-Steps זמינים שוב.");
-  } catch (e) { console.error(e); alert("שגיאה באיפוס: " + e.message); }
+  } catch (e) { alert("שגיאה באיפוס: " + e.message); }
 }
 
 async function deleteRoutine(id) {
@@ -1708,7 +1686,7 @@ function fireRoutineStartNotification(routine) {
   try {
     const n = new Notification("Routine התחיל", { body: `הגיע הזמן ל-${routine.name || "Routine"}`, tag: `routine-start-${routine.id}`, renotify: true, requireInteraction: true });
     n.onclick = () => { try { window.focus(); } catch (e) {} try { n.close(); } catch (e) {} };
-  } catch (e) { console.warn(e); }
+  } catch (e) {}
 }
 async function checkRoutineSchedules() {
   if (!currentUser || !Array.isArray(routines) || routines.length === 0) return;
@@ -1783,7 +1761,7 @@ async function runStep() {
 let stepTimerFinished = false;
 let activeNotification = null;
 let stepReminderInterval = null;
-const STEP_REMINDER_MS = 90 * 1000;
+const STEP_REMINDER_MS = NOTIF_INTERVAL_MS;
 
 async function ensureNotificationPermission() {
   if (!("Notification" in window)) { return false; }
@@ -1833,7 +1811,7 @@ function fireStepFinishedNotification(step, isReminder) {
     const n = new Notification(title, { body, tag: "routine-step-finished", renotify: true, requireInteraction: true, silent: false });
     activeNotification = n;
     n.onclick = () => { try { window.focus(); } catch (e) {} n.close(); activeNotification = null; };
-  } catch (e) { console.warn(e); }
+  } catch (e) {}
 }
 
 async function notifyStepFinished(step) {
@@ -1844,8 +1822,7 @@ async function notifyStepFinished(step) {
   await sendBarkImmediate(step);
   await markNotifiedOnServer();
 
-  /* קבע את זמן ההתראה הבאה ושמור ב-localStorage */
-  nextNotifAt = Date.now() + 90 * 1000;
+  nextNotifAt = Date.now() + NOTIF_INTERVAL_MS;
   saveNextNotifToStorage();
 
   startNextNotifCountdown();
@@ -1882,7 +1859,7 @@ function playStepBeep() {
     tone(now, 880, 0.22, 0.55);
     tone(now + 0.28, 988, 0.28, 0.6);
     setTimeout(() => { try { ctx.close(); } catch (e) {} }, 900);
-  } catch (e) { console.warn(e); }
+  } catch (e) {}
 }
 
 function updateTimerDisplay() {
@@ -1919,7 +1896,7 @@ async function completeActiveStep() {
     try {
       const docRef = doc(db, "users", currentUser.uid, "meta", "disabledSteps");
       await setDoc(docRef, disabledStepsMap, { merge: true });
-    } catch (e) { console.error(e); }
+    } catch (e) {}
   }
   const activationRules = activationRulesMap[currentStep.id] || currentStep.activationRules || [];
   if (activationRules.length > 0) {
@@ -1935,7 +1912,7 @@ async function completeActiveStep() {
     try {
       const activationDocRef = doc(db, "users", currentUser.uid, "meta", "activatedSteps");
       await setDoc(activationDocRef, activatedStepsMap, { merge: true });
-    } catch (e) { console.error(e); }
+    } catch (e) {}
   }
   activeStepIndex++;
   await runStep();

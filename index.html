@@ -2113,7 +2113,7 @@ function fireStepFinishedNotification(step, isReminder) {
   } catch (e) { console.warn("Notification failed:", e); }
 }
 
-function notifyStepFinished(step) {
+function notifyStepFinished(step) {   showStepFinishedPanel();   fireStepFinishedNotification(step, false);   playStepBeep();    /* הודע לשרת שהזמן נגמר — ישלח התראה מיידית */   triggerServerNow();    /* סנכרן את הטיימר של ההתראה הבאה */   syncTimerWithServer();   startNextNotifCountdown(); }
   showStepFinishedPanel();
   fireStepFinishedNotification(step, false);
   playStepBeep();

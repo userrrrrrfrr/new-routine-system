@@ -469,7 +469,6 @@ let syncPollInterval = null;
 const DAY_START_HOUR = 4;
 const WORKER_URL = "https://routine-reminder.privatelyemail.workers.dev";
 
-/* HELPERS */
 function getLogicalDate(date = new Date()) {
   const d = new Date(date.getTime());
   if (d.getHours() < DAY_START_HOUR) { d.setDate(d.getDate() - 1); }
@@ -517,7 +516,6 @@ function formatTextWithLinks(text) {
   return escaped.replace(urlRegex, (url) => `<a href="${url}" target="_blank" rel="noopener noreferrer">${url}</a>`);
 }
 
-/* DAY TIMER */
 let dayTimerInterval = null;
 let lastLogicalDayKey = null;
 
@@ -542,7 +540,6 @@ function startDayTimer() {
   dayTimerInterval = setInterval(updateDayTimer, 1000);
 }
 
-/* USER PANEL */
 const userTab = document.getElementById("userTab");
 const userPanel = document.getElementById("userPanel");
 const userPanelOverlay = document.getElementById("userPanelOverlay");
@@ -562,7 +559,6 @@ userTab.addEventListener("click", openUserPanel);
 closeUserPanel.addEventListener("click", closeUserPanelFunction);
 userPanelOverlay.addEventListener("click", closeUserPanelFunction);
 
-/* MAIN TABS */
 let currentMainTab = "routines";
 
 function switchMainTab(tab) {
@@ -602,7 +598,6 @@ function hideHomeUI() {
 document.getElementById("tabRoutines")?.addEventListener("click", () => switchMainTab("routines"));
 document.getElementById("tabCalendar")?.addEventListener("click", () => switchMainTab("calendar"));
 
-/* LOGIN / LOGOUT */
 document.getElementById("loginBtn").addEventListener("click", async () => {
   try { await signInWithPopup(auth, provider); }
   catch (error) { console.error(error); alert("ההתחברות נכשלה:\n\n" + error.message); }
@@ -620,7 +615,6 @@ document.getElementById("enableNotificationsBtn")?.addEventListener("click", asy
   else { alert("לא ניתנה הרשאה להתראות"); }
 });
 
-/* BARK */
 let barkUrl = "";
 
 async function loadBarkConfig() {
@@ -664,7 +658,6 @@ document.getElementById("barkTestBtn")?.addEventListener("click", async () => {
   } catch (e) { alert("שגיאה: " + e.message); }
 });
 
-/* SERVER REMINDER */
 async function startServerReminder(step, duration) {
   if (!currentUser || !activeRoutine) return;
   const effectiveBarkUrl = barkUrl || (document.getElementById("barkUrlInput")?.value || "").trim();
@@ -697,9 +690,57 @@ async function startServerReminder(step, duration) {
   } catch (e) { console.warn("startServerReminder failed:", e); }
 }
 
-async function triggerServerNow() {
-  try { await fetch(`${WORKER_URL}/trigger-now`, { method: "POST" }); }
-  catch (e) { console.warn("triggerServerNow failed:", e); }
+async function sendBarkImmediate(step) {
+  try {
+    const effectiveBarkUrl = barkUrl || (document.getElementById("barkUrlInput")?.value || "").trim();
+    if (!effectiveBarkUrl) return;
+
+    const cleanBarkUrl = effectiveBarkUrl.replace(/\s/g, "").replace(/\/$/, "");
+    const parts = cleanBarkUrl.split("/");
+    const deviceKey = parts[parts.length - 1];
+
+    let nextStepName = "";
+    if (activeSteps && activeStepIndex + 1 < activeSteps.length) {
+      const next = activeSteps[activeStepIndex + 1];
+      if (next && next.name) nextStepName = String(next.name);
+    }
+
+    const routineName = activeRoutine ? (activeRoutine.name || "") : "";
+    const title = `⏰ ${routineName || "Routine"}`;
+    const body = nextStepName
+      ? `הזמן נגמר ל: ${step.name || ""}\n→ הבא: ${nextStepName}`
+      : `הזמן נגמר ל: ${step.name || ""}`;
+
+    const baseUrl = window.location.origin + window.location.pathname;
+    const routineUrl = (activeRoutine && activeRoutine.notificationUrl)
+      ? activeRoutine.notificationUrl
+      : baseUrl + "?routine=" + encodeURIComponent(activeRoutine.id);
+
+    const payload = {
+      device_key: deviceKey,
+      title: title,
+      body: body,
+      level: "critical",
+      sound: "alarm",
+      call: 1,
+      group: "Routine"
+    };
+    if (routineUrl) payload.url = routineUrl;
+
+    await fetch("https://api.day.app/push", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload)
+    });
+    console.log("Bark immediate sent ✓");
+  } catch (e) {
+    console.warn("sendBarkImmediate failed:", e);
+  }
+}
+
+async function markNotifiedOnServer() {
+  try { await fetch(`${WORKER_URL}/mark-notified`, { method: "POST" }); }
+  catch (e) { console.warn("markNotifiedOnServer failed:", e); }
 }
 
 async function stopServerReminder() {
@@ -708,7 +749,6 @@ async function stopServerReminder() {
   catch (e) { console.warn("stopServerReminder failed:", e); }
 }
 
-/* SYNC */
 async function syncTimerWithServer() {
   try {
     const res = await fetch(`${WORKER_URL}/status`);
@@ -727,7 +767,6 @@ async function syncTimerWithServer() {
   } catch (e) { console.warn("syncTimerWithServer failed:", e); }
 }
 
-/* NEXT NOTIF COUNTDOWN */
 function startNextNotifCountdown() {
   stopNextNotifCountdown();
   nextNotifAt = Date.now() + 90 * 1000;
@@ -738,17 +777,6 @@ function startNextNotifCountdown() {
     }
     updateNextNotifDisplay();
   }, 250);
-}
-  stopNextNotifCountdown();
-  nextNotifAt = Date.now() + 90 * 1000;
-  updateNextNotifDisplay();
-  nextNotifInterval = setInterval(() => {
-    const remaining = Math.round((nextNotifAt - Date.now()) / 1000);
-    if (remaining <= 0) {
-      nextNotifAt = Date.now() + 90 * 1000;
-    }
-    updateNextNotifDisplay();
-  }, 1000);
 }
 
 function stopNextNotifCountdown() {
@@ -764,7 +792,6 @@ function updateNextNotifDisplay() {
   el.textContent = `${m}:${s}`;
 }
 
-/* CLICK / SKIP */
 document.getElementById("activeStepCard").addEventListener("click", (e) => {
   if (e.target.tagName === 'A' || e.target.closest('a')) { return; }
   completeActiveStep();
@@ -772,7 +799,6 @@ document.getElementById("activeStepCard").addEventListener("click", (e) => {
 
 document.getElementById("skipStepBtn").addEventListener("click", () => { skipActiveStep(); });
 
-/* AUTH */
 onAuthStateChanged(auth, async (user) => {
   if (user) {
     currentUser = user;
@@ -798,14 +824,12 @@ onAuthStateChanged(auth, async (user) => {
   }
 });
 
-/* SYNC ON VISIBILITY CHANGE */
 document.addEventListener("visibilitychange", async () => {
   if (document.visibilityState !== "visible") return;
   if (!activeRoutine) return;
 
   await syncTimerWithServer();
 
-  /* אם הזמן נגמר בזמן שהיינו בחוץ — הפעל את פאנל הסיום */
   if (!stepTimerFinished && stepEndsAt > 0 && Date.now() >= stepEndsAt) {
     const finishedStep = activeSteps[activeStepIndex];
     if (finishedStep) notifyStepFinished(finishedStep);
@@ -821,7 +845,6 @@ function startSyncPolling() {
   }, 30000);
 }
 
-/* LOAD DATA */
 async function loadDisabledSteps() {
   try {
     const docRef = doc(db, "users", currentUser.uid, "meta", "disabledSteps");
@@ -846,7 +869,6 @@ async function loadActivatedSteps() {
   } catch (e) { console.error("Error loading activated steps:", e); }
 }
 
-/* ACTIVATION / DISABLE */
 function isStepTemporarilyActivated(stepId) {
   const until = getStepActivationUntilDate(stepId);
   if (!until) return false;
@@ -944,7 +966,6 @@ function renderRoutines() {
   renderCalendar();
 }
 
-/* CALENDAR */
 const HEBREW_MONTHS = ["ינואר", "פברואר", "מרץ", "אפריל", "מאי", "יוני", "יולי", "אוגוסט", "ספטמבר", "אוקטובר", "נובמבר", "דצמבר"];
 const HEBREW_DAY_SHORT = ["א׳", "ב׳", "ג׳", "ד׳", "ה׳", "ו׳", "ש׳"];
 
@@ -1174,7 +1195,6 @@ document.getElementById("calNextBtn")?.addEventListener("click", () => {
   renderCalendar();
 });
 
-/* DAY DETAIL */
 function formatDayDetailTitle(date) {
   const today = getLogicalDate();
   const tomorrow = new Date(today);
@@ -1240,7 +1260,6 @@ document.getElementById("dayDetailOverlay")?.addEventListener("click", (e) => {
   if (e.target.id === "dayDetailOverlay") { closeDayDetail(); }
 });
 
-/* IMAGE */
 function compressImage(file) {
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
@@ -1296,14 +1315,12 @@ function showRoutineImagePreview() {
   preview.appendChild(remove);
 }
 
-/* COPY LINK */
 async function copyRoutineLink(routineId) {
   const url = window.location.origin + window.location.pathname + "?routine=" + encodeURIComponent(routineId);
   try { await navigator.clipboard.writeText(url); alert("הקישור הועתק!"); }
   catch (error) { prompt("העתק את הקישור:", url); }
 }
 
-/* DIRECT LINK */
 async function openRoutineFromLink() {
   const params = new URLSearchParams(window.location.search);
   const routineId = params.get("routine");
@@ -1359,7 +1376,6 @@ document.getElementById("directBackBtn").addEventListener("click", () => {
 
 document.getElementById("newRoutineBtn").addEventListener("click", () => openEditor(null));
 
-/* STEP LIBRARY */
 function getAllStepsList() {
   const list = [];
   const map = new Map();
@@ -1416,7 +1432,6 @@ function updateActivationOptionsInEditor() {
   });
 }
 
-/* EDITOR */
 function openEditor(routine) {
   hideHomeUI();
   document.getElementById("directRoutineScreen").style.display = "none";
@@ -1756,7 +1771,6 @@ document.getElementById("cancelEditorBtn").addEventListener("click", () => {
   showHomeUI();
 });
 
-/* SAVE ROUTINE */
 document.getElementById("saveRoutineBtn").addEventListener("click", async () => {
   const name = document.getElementById("routineName").value.trim();
   if (!name) { alert("נא להזין שם לשגרה"); return; }
@@ -1859,7 +1873,6 @@ document.getElementById("saveRoutineBtn").addEventListener("click", async () => 
   }
 });
 
-/* RESET ROUTINE */
 async function resetRoutine(routine) {
   if (!confirm("לאפס את השגרה להיום?\nכל ה-Steps יופיעו שוב ליום הנוכחי (עד 04:00).")) { return; }
   const stepIds = (routine.steps || []).map(s => s.id).filter(Boolean);
@@ -1875,7 +1888,6 @@ async function resetRoutine(routine) {
   } catch (e) { console.error(e); alert("שגיאה באיפוס: " + e.message); }
 }
 
-/* DELETE ROUTINE */
 async function deleteRoutine(id) {
   if (!confirm("האם למחוק שגרה זו?")) { return; }
   try {
@@ -1884,7 +1896,6 @@ async function deleteRoutine(id) {
   } catch (e) { alert("שגיאה במחיקה: " + e.message); }
 }
 
-/* SCHEDULE */
 const ROUTINE_SCHEDULE_CHECK_MS = 5000;
 const ROUTINE_SCHEDULE_STORAGE_KEY = "routine_schedule_last_run";
 let routineScheduleInterval = null;
@@ -1950,7 +1961,6 @@ function startRoutineScheduleWatcher() {
   checkRoutineSchedules();
 }
 
-/* START ROUTINE */
 async function startRoutine(routine, options = {}) {
   await ensureNotificationPermission();
   if (options.scheduled) { fireRoutineStartNotification(routine); }
@@ -1966,7 +1976,6 @@ async function startRoutine(routine, options = {}) {
   await runStep();
 }
 
-/* RUN STEP */
 async function runStep() {
   hideStepFinishedPanel();
   if (timerInterval) { clearInterval(timerInterval); }
@@ -2002,10 +2011,9 @@ async function runStep() {
       const finishedStep = activeSteps[activeStepIndex];
       notifyStepFinished(finishedStep);
     }
-  }, 500);
+  }, 250);
 }
 
-/* NOTIFICATIONS */
 let stepTimerFinished = false;
 let activeNotification = null;
 let stepReminderInterval = null;
@@ -2075,12 +2083,14 @@ function fireStepFinishedNotification(step, isReminder) {
   } catch (e) { console.warn("Notification failed:", e); }
 }
 
-function notifyStepFinished(step) {
+async function notifyStepFinished(step) {
   showStepFinishedPanel();
   fireStepFinishedNotification(step, false);
   playStepBeep();
 
-  triggerServerNow();
+  await sendBarkImmediate(step);
+  await markNotifiedOnServer();
+
   syncTimerWithServer();
 
   stopStepReminders();
@@ -2125,7 +2135,6 @@ function updateTimerDisplay() {
   document.getElementById("timer").textContent = `${m}:${s}`;
 }
 
-/* COMPLETE STEP */
 async function completeActiveStep() {
   if (timerInterval) { clearInterval(timerInterval); timerInterval = null; }
   const currentStep = activeSteps[activeStepIndex];

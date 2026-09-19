@@ -459,11 +459,12 @@ let activeRoutine = null;
 let activeSteps = [];
 let activeStepIndex = 0;
 let timerInterval = null;
-let remainingSeconds = 0;
+let stepEndsAt = 0;
 let currentRoutineImage = "";
 let stepImages = new Map();
 let nextNotifInterval = null;
-let nextNotifSeconds = 90;
+let nextNotifAt = 0;
+let syncPollInterval = null;
 
 const DAY_START_HOUR = 4;
 const WORKER_URL = "https://routine-reminder.privatelyemail.workers.dev";
@@ -663,7 +664,7 @@ document.getElementById("barkTestBtn")?.addEventListener("click", async () => {
   } catch (e) { alert("שגיאה: " + e.message); }
 });
 
-/* SERVER REMINDER (Worker) */
+/* SERVER REMINDER */
 async function startServerReminder(step, duration) {
   if (!currentUser || !activeRoutine) return;
   const effectiveBarkUrl = barkUrl || (document.getElementById("barkUrlInput")?.value || "").trim();
@@ -707,28 +708,35 @@ async function stopServerReminder() {
   catch (e) { console.warn("stopServerReminder failed:", e); }
 }
 
+/* SYNC */
 async function syncTimerWithServer() {
   try {
     const res = await fetch(`${WORKER_URL}/status`);
     const data = await res.json();
-    if (data && data.active && data.lastSentAt) {
-      const elapsed = Math.floor((Date.now() - data.lastSentAt) / 1000);
-      nextNotifSeconds = Math.max(1, 90 - elapsed);
-    } else {
-      nextNotifSeconds = 90;
+    if (!data || !data.active) return;
+
+    if (!data.stepNotified && data.stepEndsAt) {
+      stepEndsAt = data.stepEndsAt;
+      updateTimerDisplay();
     }
-  } catch (e) { nextNotifSeconds = 90; }
-  updateNextNotifDisplay();
+
+    if (data.stepNotified && data.lastSentAt) {
+      nextNotifAt = data.lastSentAt + 90 * 1000;
+      updateNextNotifDisplay();
+    }
+  } catch (e) { console.warn("syncTimerWithServer failed:", e); }
 }
 
 /* NEXT NOTIF COUNTDOWN */
 function startNextNotifCountdown() {
   stopNextNotifCountdown();
-  nextNotifSeconds = 90;
+  nextNotifAt = Date.now() + 90 * 1000;
   updateNextNotifDisplay();
   nextNotifInterval = setInterval(() => {
-    nextNotifSeconds--;
-    if (nextNotifSeconds <= 0) { nextNotifSeconds = 90; }
+    const remaining = Math.round((nextNotifAt - Date.now()) / 1000);
+    if (remaining <= 0) {
+      nextNotifAt = Date.now() + 90 * 1000;
+    }
     updateNextNotifDisplay();
   }, 1000);
 }
@@ -740,8 +748,9 @@ function stopNextNotifCountdown() {
 function updateNextNotifDisplay() {
   const el = document.getElementById("nextNotifCountdown");
   if (!el) return;
-  const m = String(Math.floor(nextNotifSeconds / 60)).padStart(2, '0');
-  const s = String(nextNotifSeconds % 60).padStart(2, '0');
+  const remaining = Math.max(0, Math.round((nextNotifAt - Date.now()) / 1000));
+  const m = String(Math.floor(remaining / 60)).padStart(2, '0');
+  const s = String(remaining % 60).padStart(2, '0');
   el.textContent = `${m}:${s}`;
 }
 
@@ -768,14 +777,39 @@ onAuthStateChanged(auth, async (user) => {
     await loadBarkConfig();
 
     startDayTimer();
+    startSyncPolling();
   } else {
     if (routineScheduleInterval) { clearInterval(routineScheduleInterval); routineScheduleInterval = null; }
     currentUser = null;
     document.getElementById("loginScreen").style.display = "flex";
     document.getElementById("app").style.display = "none";
     if (dayTimerInterval) { clearInterval(dayTimerInterval); dayTimerInterval = null; }
+    if (syncPollInterval) { clearInterval(syncPollInterval); syncPollInterval = null; }
   }
 });
+
+/* SYNC ON VISIBILITY CHANGE */
+document.addEventListener("visibilitychange", async () => {
+  if (document.visibilityState !== "visible") return;
+  if (!activeRoutine) return;
+
+  await syncTimerWithServer();
+
+  /* אם הזמן נגמר בזמן שהיינו בחוץ — הפעל את פאנל הסיום */
+  if (!stepTimerFinished && stepEndsAt > 0 && Date.now() >= stepEndsAt) {
+    const finishedStep = activeSteps[activeStepIndex];
+    if (finishedStep) notifyStepFinished(finishedStep);
+  }
+});
+
+function startSyncPolling() {
+  if (syncPollInterval) clearInterval(syncPollInterval);
+  syncPollInterval = setInterval(() => {
+    if (document.visibilityState === "visible" && activeRoutine) {
+      syncTimerWithServer();
+    }
+  }, 30000);
+}
 
 /* LOAD DATA */
 async function loadDisabledSteps() {
@@ -1943,22 +1977,22 @@ async function runStep() {
     activeImg.classList.add("hidden");
   }
 
-  remainingSeconds = currentStep.duration || 60;
+  const duration = currentStep.duration || 60;
+  stepEndsAt = Date.now() + duration * 1000;
+
   updateTimerDisplay();
 
-  await startServerReminder(currentStep, remainingSeconds);
+  await startServerReminder(currentStep, duration);
 
   timerInterval = setInterval(() => {
-    remainingSeconds--;
+    const remaining = Math.max(0, Math.round((stepEndsAt - Date.now()) / 1000));
     updateTimerDisplay();
-    if (remainingSeconds <= 0) {
-      remainingSeconds = 0;
-      updateTimerDisplay();
+    if (remaining <= 0) {
       if (timerInterval) { clearInterval(timerInterval); timerInterval = null; }
       const finishedStep = activeSteps[activeStepIndex];
       notifyStepFinished(finishedStep);
     }
-  }, 1000);
+  }, 500);
 }
 
 /* NOTIFICATIONS */
@@ -2075,8 +2109,9 @@ function playStepBeep() {
 }
 
 function updateTimerDisplay() {
-  const m = String(Math.floor(remainingSeconds / 60)).padStart(2, '0');
-  const s = String(remainingSeconds % 60).padStart(2, '0');
+  const remaining = Math.max(0, Math.round((stepEndsAt - Date.now()) / 1000));
+  const m = String(Math.floor(remaining / 60)).padStart(2, '0');
+  const s = String(remaining % 60).padStart(2, '0');
   document.getElementById("timer").textContent = `${m}:${s}`;
 }
 
@@ -2151,36 +2186,6 @@ function exitActiveScreen() {
 }
 
 document.getElementById("exitActiveBtn").addEventListener("click", exitActiveScreen);
-  /* סנכרון כשחוזרים לטאב */
-document.addEventListener("visibilitychange", async () => {
-  if (document.visibilityState !== "visible") return;
-  if (!activeRoutine || activeStepIndex >= activeSteps.length) return;
-
-  try {
-    const res = await fetch(`${WORKER_URL}/status`);
-    const data = await res.json();
-    if (!data || !data.active) return;
-
-    const now = Date.now();
-
-    if (!data.stepNotified && data.stepEndsAt) {
-      const remaining = Math.max(0, Math.round((data.stepEndsAt - now) / 1000));
-      remainingSeconds = remaining;
-      updateTimerDisplay();
-
-      if (remaining <= 0 && !stepTimerFinished) {
-        const finishedStep = activeSteps[activeStepIndex];
-        notifyStepFinished(finishedStep);
-      }
-    } else if (data.stepNotified && data.lastSentAt) {
-      const elapsed = Math.floor((now - data.lastSentAt) / 1000);
-      nextNotifSeconds = Math.max(1, 90 - elapsed);
-      updateNextNotifDisplay();
-    }
-  } catch (e) {
-    console.warn("sync on visibility failed:", e);
-  }
-});
 
 document.getElementById("continueNextStepBtn")?.addEventListener("click", () => {
   if (stepTimerFinished) { completeActiveStep(); }

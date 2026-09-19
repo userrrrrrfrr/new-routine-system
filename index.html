@@ -2151,6 +2151,36 @@ function exitActiveScreen() {
 }
 
 document.getElementById("exitActiveBtn").addEventListener("click", exitActiveScreen);
+  /* סנכרון כשחוזרים לטאב */
+document.addEventListener("visibilitychange", async () => {
+  if (document.visibilityState !== "visible") return;
+  if (!activeRoutine || activeStepIndex >= activeSteps.length) return;
+
+  try {
+    const res = await fetch(`${WORKER_URL}/status`);
+    const data = await res.json();
+    if (!data || !data.active) return;
+
+    const now = Date.now();
+
+    if (!data.stepNotified && data.stepEndsAt) {
+      const remaining = Math.max(0, Math.round((data.stepEndsAt - now) / 1000));
+      remainingSeconds = remaining;
+      updateTimerDisplay();
+
+      if (remaining <= 0 && !stepTimerFinished) {
+        const finishedStep = activeSteps[activeStepIndex];
+        notifyStepFinished(finishedStep);
+      }
+    } else if (data.stepNotified && data.lastSentAt) {
+      const elapsed = Math.floor((now - data.lastSentAt) / 1000);
+      nextNotifSeconds = Math.max(1, 90 - elapsed);
+      updateNextNotifDisplay();
+    }
+  } catch (e) {
+    console.warn("sync on visibility failed:", e);
+  }
+});
 
 document.getElementById("continueNextStepBtn")?.addEventListener("click", () => {
   if (stepTimerFinished) { completeActiveStep(); }

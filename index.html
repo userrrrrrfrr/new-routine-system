@@ -375,6 +375,7 @@ let syncPollInterval = null;
 
 const DAY_START_HOUR = 4;
 const WORKER_URL = "https://routine-reminder.privatelyemail.workers.dev";
+const NEXT_NOTIF_STORAGE_KEY = "routine_next_notif_at";
 
 function getLogicalDate(date = new Date()) {
   const d = new Date(date.getTime());
@@ -512,7 +513,7 @@ async function loadBarkConfig() {
         s.className = "tg-status ok";
       }
     }
-  } catch (e) { console.warn("loadBarkConfig failed:", e); }
+  } catch (e) { console.warn(e); }
 }
 document.getElementById("barkSaveBtn")?.addEventListener("click", async () => {
   if (!currentUser) return;
@@ -525,7 +526,7 @@ document.getElementById("barkSaveBtn")?.addEventListener("click", async () => {
     s.textContent = "✓ נשמר";
     s.className = "tg-status ok";
     alert("ה-Bark URL נשמר");
-  } catch (e) { alert("שגיאה בשמירה: " + e.message); }
+  } catch (e) { alert("שגיאה: " + e.message); }
 });
 document.getElementById("barkTestBtn")?.addEventListener("click", async () => {
   const url = document.getElementById("barkUrlInput").value.trim() || barkUrl;
@@ -534,7 +535,7 @@ document.getElementById("barkTestBtn")?.addEventListener("click", async () => {
     const cleanUrl = url.replace(/\/$/, "");
     const testUrl = `${cleanUrl}/${encodeURIComponent("בדיקת Bark")}/${encodeURIComponent("החיבור עובד ✓")}?level=critical&sound=alarm&call=1`;
     const res = await fetch(testUrl, { method: "GET" });
-    alert(res.ok ? "ההתראה נשלחה ✓ בדוק במסך הנעילה" : "השליחה נכשלה — בדוק את ה-URL");
+    alert(res.ok ? "ההתראה נשלחה ✓" : "השליחה נכשלה — בדוק את ה-URL");
   } catch (e) { alert("שגיאה: " + e.message); }
 });
 
@@ -564,7 +565,7 @@ async function startServerReminder(step, duration) {
         routineUrl: routineUrl
       })
     });
-  } catch (e) { console.warn("startServerReminder failed:", e); }
+  } catch (e) { console.warn(e); }
 }
 
 async function sendBarkImmediate(step) {
@@ -588,25 +589,25 @@ async function sendBarkImmediate(step) {
     const routineUrl = (activeRoutine && activeRoutine.notificationUrl)
       ? activeRoutine.notificationUrl
       : baseUrl + "?routine=" + encodeURIComponent(activeRoutine.id);
-    const payload = { device_key: deviceKey, title: title, body: body, level: "critical", sound: "alarm", call: 1, group: "Routine" };
+    const payload = { device_key: deviceKey, title, body, level: "critical", sound: "alarm", call: 1, group: "Routine" };
     if (routineUrl) payload.url = routineUrl;
     await fetch("https://api.day.app/push", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(payload)
     });
-  } catch (e) { console.warn("sendBarkImmediate failed:", e); }
+  } catch (e) { console.warn(e); }
 }
 
 async function markNotifiedOnServer() {
   try { await fetch(`${WORKER_URL}/mark-notified`, { method: "POST" }); }
-  catch (e) { console.warn("markNotifiedOnServer failed:", e); }
+  catch (e) { console.warn(e); }
 }
 
 async function stopServerReminder() {
   if (!currentUser) return;
   try { await fetch(`${WORKER_URL}/stop`, { method: "POST" }); }
-  catch (e) { console.warn("stopServerReminder failed:", e); }
+  catch (e) { console.warn(e); }
 }
 
 async function syncTimerWithServer() {
@@ -619,31 +620,67 @@ async function syncTimerWithServer() {
       updateTimerDisplay();
     }
     if (data.stepNotified && data.lastSentAt) {
-      nextNotifAt = data.lastSentAt + 90 * 1000;
+      const serverNext = data.lastSentAt + 90 * 1000;
+      if (serverNext > nextNotifAt) {
+        nextNotifAt = serverNext;
+        saveNextNotifToStorage();
+      }
       updateNextNotifDisplay();
     }
-  } catch (e) { console.warn("syncTimerWithServer failed:", e); }
+  } catch (e) { console.warn(e); }
 }
 
-/* ============ NEXT NOTIF COUNTDOWN WITH SERVER SYNC ============ */
+/* ============ NEXT NOTIF COUNTDOWN WITH PERSISTENCE ============ */
+
+function saveNextNotifToStorage() {
+  try {
+    if (nextNotifAt > 0) {
+      localStorage.setItem(NEXT_NOTIF_STORAGE_KEY, String(nextNotifAt));
+    }
+  } catch (e) {}
+}
+
+function loadNextNotifFromStorage() {
+  try {
+    const val = localStorage.getItem(NEXT_NOTIF_STORAGE_KEY);
+    if (val) {
+      const parsed = Number(val);
+      if (Number.isFinite(parsed) && parsed > 0) {
+        nextNotifAt = parsed;
+        return true;
+      }
+    }
+  } catch (e) {}
+  return false;
+}
+
+function clearNextNotifFromStorage() {
+  try { localStorage.removeItem(NEXT_NOTIF_STORAGE_KEY); } catch (e) {}
+  nextNotifAt = 0;
+}
+
 function startNextNotifCountdown() {
   stopNextNotifCountdown();
-  if (!nextNotifAt || nextNotifAt < Date.now()) {
-    nextNotifAt = Date.now() + 90 * 1000;
+
+  if (!nextNotifAt) {
+    loadNextNotifFromStorage();
   }
+
+  if (!nextNotifAt || nextNotifAt < Date.now() - 5000) {
+    nextNotifAt = Date.now() + 90 * 1000;
+    saveNextNotifToStorage();
+  }
+
   updateNextNotifDisplay();
 
-  /* תצוגה חלקה — כל 100ms */
   nextNotifInterval = setInterval(() => {
     updateNextNotifDisplay();
   }, 100);
 
-  /* סנכרון עם השרת — כל 5 שניות */
   nextNotifSyncInterval = setInterval(async () => {
     await syncNextNotifFromServer();
   }, 5000);
 
-  /* סנכרון מיידי פעם ראשונה */
   syncNextNotifFromServer();
 }
 
@@ -658,9 +695,13 @@ async function syncNextNotifFromServer() {
     const data = await res.json();
     if (!data || !data.active || !data.stepNotified) return;
     if (!data.lastSentAt) return;
-    nextNotifAt = data.lastSentAt + 90 * 1000;
+    const serverNext = data.lastSentAt + 90 * 1000;
+    if (serverNext > nextNotifAt) {
+      nextNotifAt = serverNext;
+      saveNextNotifToStorage();
+    }
     updateNextNotifDisplay();
-  } catch (e) { console.warn("syncNextNotifFromServer failed:", e); }
+  } catch (e) { console.warn(e); }
 }
 
 function updateNextNotifDisplay() {
@@ -808,8 +849,7 @@ function renderRoutines() {
       ? `<div class="today-info">הפעלה חד-פעמית — לחץ "התחל" מתי שתרצה<br><strong>${todaySteps.length}</strong> Steps בכל הפעלה</div>`
       : `<div class="today-info">להיום: <strong>${todaySteps.length}</strong> Steps</div>`;
     card.innerHTML = `
-      ${imageHtml}
-      ${waitingLabelHtml}
+      ${imageHtml}${waitingLabelHtml}
       <h3>${escapeHtml(routine.name)}</h3>
       <div class="routine-info">${routine.steps?.length || 0} Steps${routine.startTime ? ` · ⏰ ${escapeHtml(routine.startTime)}` : ""}</div>
       ${todayInfoHtml}
@@ -1761,6 +1801,7 @@ function hideStepFinishedPanel() {
   stepTimerFinished = false;
   stopStepReminders();
   stopNextNotifCountdown();
+  clearNextNotifFromStorage();
   stopServerReminder();
   const panel = document.getElementById("stepFinishedPanel");
   if (panel) { panel.classList.remove("show"); }
@@ -1802,7 +1843,11 @@ async function notifyStepFinished(step) {
 
   await sendBarkImmediate(step);
   await markNotifiedOnServer();
-  await syncTimerWithServer();
+
+  /* קבע את זמן ההתראה הבאה ושמור ב-localStorage */
+  nextNotifAt = Date.now() + 90 * 1000;
+  saveNextNotifToStorage();
+
   startNextNotifCountdown();
 
   stopStepReminders();

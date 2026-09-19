@@ -684,7 +684,43 @@ document.getElementById("barkTestBtn")?.addEventListener("click", async () => {
 });
 
 /* ============ SERVER REMINDER (Worker) ============ */
-async function startServerReminder(step) {
+async function startServerReminder(step, duration) {
+  if (!currentUser || !activeRoutine) return;
+  const effectiveBarkUrl = barkUrl || (document.getElementById("barkUrlInput")?.value || "").trim();
+  if (!effectiveBarkUrl) return;
+
+  const baseUrl = window.location.origin + window.location.pathname;
+  const routineUrl = activeRoutine.notificationUrl
+    ? activeRoutine.notificationUrl
+    : baseUrl + "?routine=" + encodeURIComponent(activeRoutine.id);
+
+  let nextStepName = "";
+  if (activeSteps && activeStepIndex + 1 < activeSteps.length) {
+    const next = activeSteps[activeStepIndex + 1];
+    if (next && next.name) nextStepName = String(next.name);
+  }
+
+  try {
+    await fetch(`${WORKER_URL}/start-step`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        routineName: activeRoutine.name || "",
+        stepName: step.name || "",
+        nextStepName: nextStepName,
+        duration: duration,
+        barkUrl: effectiveBarkUrl,
+        routineUrl: routineUrl
+      })
+    });
+  } catch (e) { console.warn("startServerReminder failed:", e); }
+}
+
+async function triggerServerNow() {
+  try {
+    await fetch(`${WORKER_URL}/trigger-now`, { method: "POST" });
+  } catch (e) { console.warn("triggerServerNow failed:", e); }
+}
   if (!currentUser || !activeRoutine) return;
   const effectiveBarkUrl = barkUrl || (document.getElementById("barkUrlInput")?.value || "").trim();
   if (!effectiveBarkUrl) return;

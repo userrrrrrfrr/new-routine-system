@@ -733,6 +733,16 @@ function startNextNotifCountdown() {
   nextNotifAt = Date.now() + 90 * 1000;
   updateNextNotifDisplay();
   nextNotifInterval = setInterval(() => {
+    if (Date.now() >= nextNotifAt) {
+      nextNotifAt = Date.now() + 90 * 1000;
+    }
+    updateNextNotifDisplay();
+  }, 250);
+}
+  stopNextNotifCountdown();
+  nextNotifAt = Date.now() + 90 * 1000;
+  updateNextNotifDisplay();
+  nextNotifInterval = setInterval(() => {
     const remaining = Math.round((nextNotifAt - Date.now()) / 1000);
     if (remaining <= 0) {
       nextNotifAt = Date.now() + 90 * 1000;

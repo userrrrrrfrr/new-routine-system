@@ -141,6 +141,8 @@
     .step-finished-panel.show { display: block; }
     .step-finished-panel .finished-title { font-size: 16px; font-weight: 700; color: #c40000; margin-bottom: 6px; }
     .step-finished-panel .finished-hint { font-size: 13px; color: #666; margin-bottom: 14px; }
+    .next-notif-countdown { font-size: 15px; color: #666; margin-bottom: 14px; font-variant-numeric: tabular-nums; }
+    .next-notif-countdown span { font-weight: 700; color: #c40000; font-size: 18px; }
     .step-finished-actions { display: flex; gap: 10px; }
     .step-finished-actions .continue-btn { flex: 1; padding: 14px; background: #111; color: white; border: 0; border-radius: 14px; font-size: 16px; font-weight: 600; }
     .step-finished-actions .wait-btn { flex: 1; padding: 14px; background: white; border: 1px solid #ddd; border-radius: 14px; font-size: 15px; color: #555; }
@@ -405,6 +407,9 @@
         <div id="stepFinishedPanel" class="step-finished-panel">
           <div class="finished-title">הזמן ל-Step הזה נגמר</div>
           <div class="finished-hint">רוצה לסמן כבוצע ולהמשיך ל-Step הבא?</div>
+          <div class="next-notif-countdown">
+            התראה הבאה בעוד: <span id="nextNotifCountdown">01:30</span>
+          </div>
           <div class="step-finished-actions">
             <button type="button" id="continueNextStepBtn" class="continue-btn">✓ המשך ל-Step הבא</button>
             <button type="button" id="waitOnStepBtn" class="wait-btn">עוד רגע</button>
@@ -689,7 +694,6 @@ async function startServerReminder(step) {
     ? activeRoutine.notificationUrl
     : baseUrl + "?routine=" + encodeURIComponent(activeRoutine.id);
 
-  /* מצא את שם ה-Step הבא */
   let nextStepName = "";
   if (activeSteps && activeStepIndex + 1 < activeSteps.length) {
     const next = activeSteps[activeStepIndex + 1];
@@ -1941,6 +1945,37 @@ let activeNotification = null;
 let stepReminderInterval = null;
 const STEP_REMINDER_MS = 90 * 1000;
 
+let nextNotifInterval = null;
+let nextNotifSeconds = 90;
+
+function startNextNotifCountdown() {
+  stopNextNotifCountdown();
+  nextNotifSeconds = 90;
+  updateNextNotifDisplay();
+  nextNotifInterval = setInterval(() => {
+    nextNotifSeconds--;
+    if (nextNotifSeconds <= 0) {
+      nextNotifSeconds = 90;
+    }
+    updateNextNotifDisplay();
+  }, 1000);
+}
+
+function stopNextNotifCountdown() {
+  if (nextNotifInterval) {
+    clearInterval(nextNotifInterval);
+    nextNotifInterval = null;
+  }
+}
+
+function updateNextNotifDisplay() {
+  const el = document.getElementById("nextNotifCountdown");
+  if (!el) return;
+  const m = String(Math.floor(nextNotifSeconds / 60)).padStart(2, '0');
+  const s = String(nextNotifSeconds % 60).padStart(2, '0');
+  el.textContent = `${m}:${s}`;
+}
+
 async function ensureNotificationPermission() {
   if (!("Notification" in window)) { return false; }
   if (Notification.permission === "granted") { return true; }
@@ -1958,6 +1993,7 @@ function stopStepReminders() {
 function hideStepFinishedPanel() {
   stepTimerFinished = false;
   stopStepReminders();
+  stopNextNotifCountdown();
   stopServerReminder();
   const panel = document.getElementById("stepFinishedPanel");
   if (panel) { panel.classList.remove("show"); }
@@ -2010,6 +2046,7 @@ function notifyStepFinished(step) {
   playStepBeep();
 
   startServerReminder(step);
+  startNextNotifCountdown();
 
   stopStepReminders();
   stepReminderInterval = setInterval(() => {

@@ -627,7 +627,7 @@ document.getElementById("enableNotificationsBtn")?.addEventListener("click", asy
   if (granted) {
     alert("התראות דפדפן הופעלו בהצלחה");
   } else if (Notification.permission === "denied") {
-    alert("ההרשאה נחסמה.\nלכי להגדרות → Safari → האתר → התראות והפעל.");
+    alert("ההרשאה נחסמה.\nלכי להגדרות → Safari → האתר → התראות והפעיל.");
   } else {
     alert("לא ניתנה הרשאה להתראות");
   }
@@ -2009,7 +2009,6 @@ function notifyStepFinished(step) {
   fireStepFinishedNotification(step, false);
   playStepBeep();
 
-  /* הפעל תזכורות בשרת — יעבוד גם כשהאתר סגור */
   startServerReminder(step);
 
   stopStepReminders();

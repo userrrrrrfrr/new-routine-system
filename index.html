@@ -769,6 +769,19 @@ async function syncTimerWithServer() {
 
 function startNextNotifCountdown() {
   stopNextNotifCountdown();
+  if (!nextNotifAt || nextNotifAt < Date.now()) {
+    nextNotifAt = Date.now() + 90 * 1000;
+  }
+  updateNextNotifDisplay();
+  nextNotifInterval = setInterval(() => {
+    const remaining = nextNotifAt - Date.now();
+    if (remaining <= 0) {
+      nextNotifAt = Date.now() + 90 * 1000;
+    }
+    updateNextNotifDisplay();
+  }, 100);
+}
+  stopNextNotifCountdown();
   nextNotifAt = Date.now() + 90 * 1000;
   updateNextNotifDisplay();
   nextNotifInterval = setInterval(() => {

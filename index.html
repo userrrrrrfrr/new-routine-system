@@ -781,16 +781,6 @@ function startNextNotifCountdown() {
     updateNextNotifDisplay();
   }, 100);
 }
-  stopNextNotifCountdown();
-  nextNotifAt = Date.now() + 90 * 1000;
-  updateNextNotifDisplay();
-  nextNotifInterval = setInterval(() => {
-    if (Date.now() >= nextNotifAt) {
-      nextNotifAt = Date.now() + 90 * 1000;
-    }
-    updateNextNotifDisplay();
-  }, 250);
-}
 
 function stopNextNotifCountdown() {
   if (nextNotifInterval) { clearInterval(nextNotifInterval); nextNotifInterval = null; }
@@ -2104,29 +2094,9 @@ async function notifyStepFinished(step) {
   await sendBarkImmediate(step);
   await markNotifiedOnServer();
 
-  /* סנכרן את שני הטיימרים עם השרת */
   await syncTimerWithServer();
 
-  /* הפעל את טיימר ההתראה הבאה */
   startNextNotifCountdown();
-
-  stopStepReminders();
-  stepReminderInterval = setInterval(() => {
-    if (!stepTimerFinished) { stopStepReminders(); return; }
-    const current = activeSteps && activeSteps[activeStepIndex] ? activeSteps[activeStepIndex] : step;
-    fireStepFinishedNotification(current, true);
-    playStepBeep();
-    showStepFinishedPanel();
-  }, STEP_REMINDER_MS);
-}
-  showStepFinishedPanel();
-  fireStepFinishedNotification(step, false);
-  playStepBeep();
-
-  await sendBarkImmediate(step);
-  await markNotifiedOnServer();
-
-  syncTimerWithServer();
 
   stopStepReminders();
   stepReminderInterval = setInterval(() => {

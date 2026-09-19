@@ -2091,6 +2091,28 @@ async function notifyStepFinished(step) {
   await sendBarkImmediate(step);
   await markNotifiedOnServer();
 
+  /* סנכרן את שני הטיימרים עם השרת */
+  await syncTimerWithServer();
+
+  /* הפעל את טיימר ההתראה הבאה */
+  startNextNotifCountdown();
+
+  stopStepReminders();
+  stepReminderInterval = setInterval(() => {
+    if (!stepTimerFinished) { stopStepReminders(); return; }
+    const current = activeSteps && activeSteps[activeStepIndex] ? activeSteps[activeStepIndex] : step;
+    fireStepFinishedNotification(current, true);
+    playStepBeep();
+    showStepFinishedPanel();
+  }, STEP_REMINDER_MS);
+}
+  showStepFinishedPanel();
+  fireStepFinishedNotification(step, false);
+  playStepBeep();
+
+  await sendBarkImmediate(step);
+  await markNotifiedOnServer();
+
   syncTimerWithServer();
 
   stopStepReminders();

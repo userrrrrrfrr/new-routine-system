@@ -951,13 +951,15 @@ function getStepsForCalendarDay(routine, date, today) {
   }
   return calendarSteps.filter(step => isStepDueOnDate(step, date));
 }
+
+/* ============ תיקון: ביום ספציפי — מציג את כל ה-Steps של השגרה ============ */
 function getStepsForDayDetail(routine, date, today) {
   const dayOfWeek = date.getDay();
-  if (!routine.days || routine.days.length === 0 || !routine.days.includes(dayOfWeek)) { return []; }
-  const steps = routine.steps || [];
-  if (steps.length === 0) { return []; }
-  if (isSameDate(date, today)) { return getTodaySteps(routine); }
-  return steps.filter(step => isStepDueOnDate(step, date));
+  if (!routine.days || routine.days.length === 0 || !routine.days.includes(dayOfWeek)) {
+    return [];
+  }
+  /* ביום ספציפי — כל ה-Steps של השגרה, בלי סינון */
+  return routine.steps || [];
 }
 
 function renderCalendar() {
@@ -1860,7 +1862,12 @@ function fireStepFinishedNotification(step, isReminder) {
   } catch (e) {}
 }
 
+/* ============ תיקון: מונע קריאה כפולה + מסיר ביפ מהתזכורות ============ */
 async function notifyStepFinished(step) {
+  /* מניעת קריאה כפולה */
+  if (stepTimerFinished) return;
+  if (timerInterval) { clearInterval(timerInterval); timerInterval = null; }
+
   showStepFinishedPanel();
   fireStepFinishedNotification(step, false);
   playStepBeep();
@@ -1878,7 +1885,7 @@ async function notifyStepFinished(step) {
     if (!stepTimerFinished) { stopStepReminders(); return; }
     const current = activeSteps && activeSteps[activeStepIndex] ? activeSteps[activeStepIndex] : step;
     fireStepFinishedNotification(current, true);
-    playStepBeep();
+    /* ← הביפ הוסר מכאן — רק התראות דפדפן, בלי צליל חוזר */
     showStepFinishedPanel();
   }, STEP_REMINDER_MS);
 }

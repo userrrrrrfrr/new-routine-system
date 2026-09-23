@@ -1856,20 +1856,20 @@ function fireStepFinishedNotification(step, isReminder) {
   if (nextStepName) { body += "\n→ הבא אחרי ביצוע: " + nextStepName; }
   try {
     if (activeNotification) { try { activeNotification.close(); } catch (e) {} }
-    const n = new Notification(title, { body, tag: "routine-step-finished", renotify: true, requireInteraction: true, silent: false });
+    /* silent:true — מבטל את צליל מערכת ההפעלה. הצליל היחיד הוא playStepBeep */
+    const n = new Notification(title, { body, tag: "routine-step-finished", renotify: true, requireInteraction: true, silent: true });
     activeNotification = n;
     n.onclick = () => { try { window.focus(); } catch (e) {} n.close(); activeNotification = null; };
   } catch (e) {}
 }
 
-/* ============ notifyStepFinished — מונע קריאה כפולה, צפצוף מוגבל בזמן ============ */
 async function notifyStepFinished(step) {
   if (stepTimerFinished) return;
   if (timerInterval) { clearInterval(timerInterval); timerInterval = null; }
 
   showStepFinishedPanel();
   fireStepFinishedNotification(step, false);
-  playStepBeep(3);   /* 3 שניות צפצוף ואז מפסיק לבד */
+  playStepBeep(3);
 
   await sendBarkImmediate(step);
   await markNotifiedOnServer();

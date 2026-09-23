@@ -952,13 +952,12 @@ function getStepsForCalendarDay(routine, date, today) {
   return calendarSteps.filter(step => isStepDueOnDate(step, date));
 }
 
-/* ============ תיקון: ביום ספציפי — מציג את כל ה-Steps של השגרה ============ */
+/* ============ ביום ספציפי — מציג את כל ה-Steps של השגרה ============ */
 function getStepsForDayDetail(routine, date, today) {
   const dayOfWeek = date.getDay();
   if (!routine.days || routine.days.length === 0 || !routine.days.includes(dayOfWeek)) {
     return [];
   }
-  /* ביום ספציפי — כל ה-Steps של השגרה, בלי סינון */
   return routine.steps || [];
 }
 
@@ -1824,6 +1823,7 @@ function stopStepReminders() {
   if (stepReminderInterval) { clearInterval(stepReminderInterval); stepReminderInterval = null; }
 }
 function hideStepFinishedPanel() {
+  stopStepBeep();
   stepTimerFinished = false;
   stopStepReminders();
   stopNextNotifCountdown();
@@ -1862,15 +1862,14 @@ function fireStepFinishedNotification(step, isReminder) {
   } catch (e) {}
 }
 
-/* ============ תיקון: מונע קריאה כפולה + מסיר ביפ מהתזכורות ============ */
+/* ============ notifyStepFinished — מונע קריאה כפולה, צפצוף מוגבל בזמן ============ */
 async function notifyStepFinished(step) {
-  /* מניעת קריאה כפולה */
   if (stepTimerFinished) return;
   if (timerInterval) { clearInterval(timerInterval); timerInterval = null; }
 
   showStepFinishedPanel();
   fireStepFinishedNotification(step, false);
-  playStepBeep();
+  playStepBeep(3);   /* 3 שניות צפצוף ואז מפסיק לבד */
 
   await sendBarkImmediate(step);
   await markNotifiedOnServer();
@@ -1885,22 +1884,17 @@ async function notifyStepFinished(step) {
     if (!stepTimerFinished) { stopStepReminders(); return; }
     const current = activeSteps && activeSteps[activeStepIndex] ? activeSteps[activeStepIndex] : step;
     fireStepFinishedNotification(current, true);
-    /* ← הביפ הוסר מכאן — רק התראות דפדפן, בלי צליל חוזר */
     showStepFinishedPanel();
   }, STEP_REMINDER_MS);
 }
 
 /* ============ BEEP עם משך ועצירה ============ */
-
 let beepAudioCtx = null;
 let beepTimeout = null;
-let beepInterval = null;
 let beepOscillators = [];
 
-/* עצירת הצפצוף מיידית */
 function stopStepBeep() {
   if (beepTimeout) { clearTimeout(beepTimeout); beepTimeout = null; }
-  if (beepInterval) { clearInterval(beepInterval); beepInterval = null; }
   beepOscillators.forEach(osc => {
     try { osc.stop(); } catch (e) {}
   });
@@ -1911,13 +1905,8 @@ function stopStepBeep() {
   }
 }
 
-/*
-  playStepBeep(durationSec)
-  durationSec = כמה שניות להצפצף (ברירת מחדל: 3)
-*/
 function playStepBeep(durationSec = 3) {
   stopStepBeep();
-
   try {
     const AudioCtx = window.AudioContext || window.webkitAudioContext;
     if (!AudioCtx) return;
@@ -1929,34 +1918,26 @@ function playStepBeep(durationSec = 3) {
     function tone(start, freq, duration, peak) {
       const osc = ctx.createOscillator();
       const gain = ctx.createGain();
-
       osc.type = "square";
       osc.frequency.value = freq;
-
       gain.gain.setValueAtTime(0.0001, start);
       gain.gain.exponentialRampToValueAtTime(peak, start + 0.015);
       gain.gain.exponentialRampToValueAtTime(0.0001, start + duration);
-
       osc.connect(gain);
       gain.connect(ctx.destination);
-
       osc.start(start);
       osc.stop(start + duration + 0.02);
-
       beepOscillators.push(osc);
     }
 
-    /* דפוס צפצוף: זוג טונים כל 0.6 שניות, עד תום הזמן */
     let t = startTime;
     const endTime = startTime + durationSec;
-
     while (t < endTime) {
       tone(t, 880, 0.22, 0.55);
       tone(t + 0.28, 988, 0.28, 0.6);
-      t += 0.9; // מרווח בין חזרות
+      t += 0.9;
     }
 
-    /* עצירה אוטומטית בסוף */
     beepTimeout = setTimeout(() => {
       stopStepBeep();
     }, durationSec * 1000 + 200);
@@ -1964,29 +1945,6 @@ function playStepBeep(durationSec = 3) {
   } catch (e) {
     console.warn("Beep failed:", e);
   }
-}
-  try {
-    const AudioCtx = window.AudioContext || window.webkitAudioContext;
-    if (!AudioCtx) return;
-    const ctx = new AudioCtx();
-    const now = ctx.currentTime;
-    function tone(start, freq, duration, peak) {
-      const osc = ctx.createOscillator();
-      const gain = ctx.createGain();
-      osc.type = "square";
-      osc.frequency.value = freq;
-      gain.gain.setValueAtTime(0.0001, start);
-      gain.gain.exponentialRampToValueAtTime(peak, start + 0.015);
-      gain.gain.exponentialRampToValueAtTime(0.0001, start + duration);
-      osc.connect(gain);
-      gain.connect(ctx.destination);
-      osc.start(start);
-      osc.stop(start + duration + 0.02);
-    }
-    tone(now, 880, 0.22, 0.55);
-    tone(now + 0.28, 988, 0.28, 0.6);
-    setTimeout(() => { try { ctx.close(); } catch (e) {} }, 900);
-  } catch (e) {}
 }
 
 function updateTimerDisplay() {
@@ -1997,6 +1955,7 @@ function updateTimerDisplay() {
 }
 
 async function completeActiveStep() {
+  stopStepBeep();
   if (timerInterval) { clearInterval(timerInterval); timerInterval = null; }
   const currentStep = activeSteps[activeStepIndex];
   if (!currentStep) { return; }
@@ -2056,9 +2015,10 @@ async function completeActiveStep() {
   await runStep();
 }
 
-function skipActiveStep() { activeStepIndex++; runStep(); }
+function skipActiveStep() { stopStepBeep(); activeStepIndex++; runStep(); }
 
 function exitActiveScreen() {
+  stopStepBeep();
   hideStepFinishedPanel();
   if (timerInterval) { clearInterval(timerInterval); timerInterval = null; }
   document.getElementById("activeScreen").style.display = "none";
@@ -2071,6 +2031,7 @@ document.getElementById("continueNextStepBtn")?.addEventListener("click", () => 
   if (stepTimerFinished) { completeActiveStep(); }
 });
 document.getElementById("waitOnStepBtn")?.addEventListener("click", () => {
+  stopStepBeep();
   const panel = document.getElementById("stepFinishedPanel");
   if (panel) { panel.classList.remove("show"); }
   if (activeNotification) {

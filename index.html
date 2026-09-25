@@ -173,7 +173,9 @@ input,select{width:100%;padding:13px;border:1px solid #ddd;border-radius:10px;ba
 .show-in-calendar-box label{font-weight:600;font-size:14px;cursor:pointer;margin:0}
 .show-in-calendar-box .hint{font-size:12px;color:#888;font-weight:normal;display:block;margin-top:2px}
 /* ===== זמן משוער ===== */
-.routine-estimate{display:inline-flex;align-items:center;gap:6px;margin-top:8px;padding:5px 12px;border-radius:9px;background:#eef4ff;color:#0b5cff;font-size:13px;font-weight:600;font-variant-numeric:tabular-nums}
+.routine-estimate{display:inline-flex;align-items:center;gap:6px;margin-top:8px;padding:5px 12px;border-radius:9px;background:#eef4ff;color:#0b5cff;font-size:13px;font-weight:600;font-variant-numeric:tabular-nums;flex-wrap:wrap}
+.routine-estimate .est-sep{color:#9db8ff;font-weight:400}
+.routine-estimate .est-clock{color:#0b5cff}
 .routine-estimate.done{background:#eefaf0;color:#0a8f0a}
 .active-estimate{display:flex;justify-content:center;gap:10px;flex-wrap:wrap;margin:2px 0 14px;font-size:13px;color:#555;font-variant-numeric:tabular-nums}
 .active-estimate .est-item{display:inline-flex;align-items:baseline;gap:5px;background:#f5f5f7;padding:5px 10px;border-radius:9px}
@@ -432,6 +434,10 @@ function formatTextWithLinks(text) {
 }
 
 /* ===== פונקציות זמן משוער ===== */
+function formatClockTime(date) {
+  if (!date || isNaN(date.getTime())) return "--:--";
+  return String(date.getHours()).padStart(2, "0") + ":" + String(date.getMinutes()).padStart(2, "0");
+}
 function formatDurationHe(totalSeconds) {
   totalSeconds = Math.max(0, Math.round(totalSeconds));
   if (totalSeconds < 60) return totalSeconds + " שנ׳";
@@ -459,6 +465,33 @@ function getRoutineEstimatedSeconds(routine) {
   steps.forEach(s => { total += Math.max(1, Number(s.duration) || 60); });
   return total;
 }
+/* ===== שעת סיום משוערת לשגרה (בהתאם לשעת ההתחלה שהוגדרה) =====
+   - אם יש startTime והשגרה מתוזמנת להיום: בסיס = startTime של היום
+   - אם השעה כבר עברה אך עדיין בתוך חלון הביצוע: בסיס = startTime (כאילו התחילה בזמן)
+   - אם אין startTime או שהשגרה ממתינה להפעלה ידנית: בסיס = עכשיו
+   - אם שעת הסיום כבר עברה - מחזיר null (לא מציגים) */
+function getRoutineEstimatedEndTime(routine) {
+  const duration = getRoutineEstimatedSeconds(routine);
+  if (duration <= 0) return null;
+
+  const now = Date.now();
+
+  if (routine.startTime && isRoutineScheduledToday(routine)) {
+    const parts = routine.startTime.split(":");
+    const h = Number(parts[0]);
+    const m = Number(parts[1]);
+    if (!Number.isFinite(h) || !Number.isFinite(m)) return null;
+    const start = new Date();
+    start.setHours(h, m, 0, 0);
+    const end = new Date(start.getTime() + duration * 1000);
+    if (end.getTime() < now) return null;
+    return end;
+  }
+
+  /* אין שעת התחלה (או ממתין להפעלה) - מבוסס על "עכשיו" */
+  if (isRoutineWaitingActivation(routine)) return null;
+  return new Date(now + duration * 1000);
+}
 function computeActiveRemainingSeconds() {
   if (!activeSteps || activeStepIndex >= activeSteps.length) return 0;
   let remaining = Math.max(0, Math.round((stepEndsAt - Date.now()) / 1000));
@@ -480,9 +513,7 @@ function updateActiveEstimate() {
   remEl.textContent = formatMMSS(remaining);
   if (clockEl) {
     const finish = new Date(Date.now() + remaining * 1000);
-    clockEl.textContent =
-      String(finish.getHours()).padStart(2, "0") + ":" +
-      String(finish.getMinutes()).padStart(2, "0");
+    clockEl.textContent = formatClockTime(finish);
   }
 }
 
@@ -918,10 +949,20 @@ function renderRoutines() {
     const todaySteps = getTodaySteps(routine);
     const imageHtml = routine.image ? `<img class="routine-image" src="${routine.image}" alt="">` : "";
     const waitingLabelHtml = waiting ? `<span class="waiting-activation-label">ממתין להפעלה</span>` : "";
+
+    /* ===== חישוב זמן משוער + שעת סיום ===== */
     const estimatedSec = getRoutineEstimatedSeconds(routine);
-    const estimateHtml = todaySteps.length > 0
-      ? `<div class="routine-estimate">⏱ זמן משוער: ${formatDurationHe(estimatedSec)}</div>`
-      : "";
+    let estimateHtml = "";
+    if (todaySteps.length > 0) {
+      const endTime = getRoutineEstimatedEndTime(routine);
+      const durationStr = formatDurationHe(estimatedSec);
+      if (endTime) {
+        estimateHtml = `<div class="routine-estimate">⏱ ${durationStr}<span class="est-sep">·</span>סיום משוער ב־<span class="est-clock">${formatClockTime(endTime)}</span></div>`;
+      } else {
+        estimateHtml = `<div class="routine-estimate">⏱ זמן משוער: ${durationStr}</div>`;
+      }
+    }
+
     const todayInfoHtml = waiting
       ? `<div class="today-info">הפעלה חד-פעמית — לחץ "התחל" מתי שתרצה<br><strong>${todaySteps.length}</strong> Steps בכל הפעלה</div>${estimateHtml}`
       : `<div class="today-info">להיום: <strong>${todaySteps.length}</strong> Steps</div>${estimateHtml}`;
@@ -1032,6 +1073,18 @@ function getStepsForDayDetail(routine, date, today) {
     return [];
   }
   return routine.steps || [];
+}
+
+/* חישוב שעת סיום עבור תאריך ספציפי (בהתבסס על שעת התחלה של השגרה) */
+function getEstimatedEndTimeForDate(routine, date, durationSec) {
+  if (!routine.startTime || durationSec <= 0) return null;
+  const parts = routine.startTime.split(":");
+  const h = Number(parts[0]);
+  const m = Number(parts[1]);
+  if (!Number.isFinite(h) || !Number.isFinite(m)) return null;
+  const start = new Date(date);
+  start.setHours(h, m, 0, 0);
+  return new Date(start.getTime() + durationSec * 1000);
 }
 
 function renderCalendar() {
@@ -1192,12 +1245,18 @@ function openDayDetail(date) {
       totalSec += Math.max(1, Number(step.duration) || 60);
       const sEl = document.createElement("div");
       sEl.className = "day-detail-step";
-      sEl.innerHTML = "<strong>#" + (step.stepNumber || index + 1) + "</strong> · " + formatTextWithLinks(step.name || "Step ללא שם");
+      const stepDur = Math.max(1, Number(step.duration) || 60);
+      sEl.innerHTML = "<strong>#" + (step.stepNumber || index + 1) + "</strong> · " + formatTextWithLinks(step.name || "Step ללא שם") + ` <span style="color:#999;font-size:12px">(${formatDurationHe(stepDur)})</span>`;
       rBlock.appendChild(sEl);
     });
     const estEl = document.createElement("div");
     estEl.className = "routine-estimate";
-    estEl.textContent = "⏱ זמן משוער: " + formatDurationHe(totalSec);
+    const endTime = getEstimatedEndTimeForDate(routine, date, totalSec);
+    if (endTime) {
+      estEl.innerHTML = `⏱ סה״כ ${formatDurationHe(totalSec)}<span class="est-sep">·</span>סיום משוער ב־<span class="est-clock">${formatClockTime(endTime)}</span>`;
+    } else {
+      estEl.textContent = "⏱ סה״כ " + formatDurationHe(totalSec);
+    }
     rBlock.appendChild(estEl);
     contentEl.appendChild(rBlock);
   });

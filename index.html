@@ -172,6 +172,13 @@ input,select{width:100%;padding:13px;border:1px solid #ddd;border-radius:10px;ba
 .show-in-calendar-box input[type="checkbox"]{width:18px;height:18px;accent-color:#111;flex-shrink:0;cursor:pointer}
 .show-in-calendar-box label{font-weight:600;font-size:14px;cursor:pointer;margin:0}
 .show-in-calendar-box .hint{font-size:12px;color:#888;font-weight:normal;display:block;margin-top:2px}
+/* ===== זמן משוער ===== */
+.routine-estimate{display:inline-flex;align-items:center;gap:6px;margin-top:8px;padding:5px 12px;border-radius:9px;background:#eef4ff;color:#0b5cff;font-size:13px;font-weight:600;font-variant-numeric:tabular-nums}
+.routine-estimate.done{background:#eefaf0;color:#0a8f0a}
+.active-estimate{display:flex;justify-content:center;gap:10px;flex-wrap:wrap;margin:2px 0 14px;font-size:13px;color:#555;font-variant-numeric:tabular-nums}
+.active-estimate .est-item{display:inline-flex;align-items:baseline;gap:5px;background:#f5f5f7;padding:5px 10px;border-radius:9px}
+.active-estimate .est-item strong{color:#111;font-size:15px;font-weight:700;letter-spacing:.3px}
+.active-estimate .est-item.est-clock strong{color:#0b5cff}
 </style>
 </head>
 <body>
@@ -295,6 +302,10 @@ input,select{width:100%;padding:13px;border:1px solid #ddd;border-radius:10px;ba
     <div id="activeScreen">
       <div class="active-box">
         <h1 id="activeRoutineName"></h1>
+        <div class="active-estimate" id="activeEstimate">
+          <span class="est-item">⏱ סיום משוער בעוד <strong id="activeEstimateRemaining">--:--</strong></span>
+          <span class="est-item est-clock">🕐 ב־<strong id="activeEstimateClock">--:--</strong></span>
+        </div>
         <div id="activeStepCard" class="active-step-card">
           <img id="activeStepImage" class="active-step-image hidden" alt="">
           <div id="activeStepName"></div>
@@ -372,6 +383,8 @@ let nextNotifInterval = null;
 let nextNotifSyncInterval = null;
 let nextNotifAt = 0;
 let syncPollInterval = null;
+let activeRoutineStartedAt = 0;
+let activeRoutineTotalEstimated = 0;
 
 const DAY_START_HOUR = 4;
 const WORKER_URL = "https://routine-reminder.privatelyemail.workers.dev";
@@ -416,6 +429,61 @@ function formatTextWithLinks(text) {
   const urlRegex = /(https?:\/\/[^\s]+)/g;
   const escaped = escapeHtml(text);
   return escaped.replace(urlRegex, (url) => `<a href="${url}" target="_blank" rel="noopener noreferrer">${url}</a>`);
+}
+
+/* ===== פונקציות זמן משוער ===== */
+function formatDurationHe(totalSeconds) {
+  totalSeconds = Math.max(0, Math.round(totalSeconds));
+  if (totalSeconds < 60) return totalSeconds + " שנ׳";
+  const m = Math.floor(totalSeconds / 60);
+  const s = totalSeconds % 60;
+  if (m < 60) return s > 0 ? m + ":" + String(s).padStart(2, "0") + " דק׳" : m + " דק׳";
+  const h = Math.floor(m / 60);
+  const rm = m % 60;
+  return rm > 0 ? h + " שע׳ " + rm + " דק׳" : h + " שע׳";
+}
+function formatMMSS(totalSeconds) {
+  totalSeconds = Math.max(0, Math.round(totalSeconds));
+  const m = Math.floor(totalSeconds / 60);
+  const s = totalSeconds % 60;
+  if (m >= 60) {
+    const h = Math.floor(m / 60);
+    const rm = m % 60;
+    return h + ":" + String(rm).padStart(2, "0") + ":" + String(s).padStart(2, "0");
+  }
+  return String(m).padStart(2, "0") + ":" + String(s).padStart(2, "0");
+}
+function getRoutineEstimatedSeconds(routine) {
+  const steps = getTodaySteps(routine);
+  let total = 0;
+  steps.forEach(s => { total += Math.max(1, Number(s.duration) || 60); });
+  return total;
+}
+function computeActiveRemainingSeconds() {
+  if (!activeSteps || activeStepIndex >= activeSteps.length) return 0;
+  let remaining = Math.max(0, Math.round((stepEndsAt - Date.now()) / 1000));
+  for (let i = activeStepIndex + 1; i < activeSteps.length; i++) {
+    remaining += Math.max(1, Number(activeSteps[i].duration) || 60);
+  }
+  return remaining;
+}
+function updateActiveEstimate() {
+  const remEl = document.getElementById("activeEstimateRemaining");
+  const clockEl = document.getElementById("activeEstimateClock");
+  if (!remEl) return;
+  if (!activeRoutine || activeStepIndex >= activeSteps.length) {
+    remEl.textContent = "00:00";
+    if (clockEl) clockEl.textContent = "--:--";
+    return;
+  }
+  const remaining = computeActiveRemainingSeconds();
+  remEl.textContent = formatMMSS(remaining);
+  if (clockEl) {
+    const finish = new Date(Date.now() + remaining * 1000);
+    clockEl.textContent =
+      String(finish.getHours()).padStart(2, "0") + ":" +
+      String(finish.getMinutes()).padStart(2, "0");
+  }
 }
 
 let dayTimerInterval = null;
@@ -619,6 +687,7 @@ async function syncTimerWithServer() {
     if (!data.stepNotified && data.stepEndsAt) {
       stepEndsAt = data.stepEndsAt;
       updateTimerDisplay();
+      updateActiveEstimate();
     }
     if (data.stepNotified && data.lastSentAt) {
       const serverNext = data.lastSentAt + NOTIF_INTERVAL_MS;
@@ -734,6 +803,7 @@ onAuthStateChanged(auth, async (user) => {
     await loadBarkConfig();
     startDayTimer();
     startSyncPolling();
+    startRoutineScheduleWatcher();
   } else {
     if (routineScheduleInterval) { clearInterval(routineScheduleInterval); routineScheduleInterval = null; }
     currentUser = null;
@@ -848,9 +918,13 @@ function renderRoutines() {
     const todaySteps = getTodaySteps(routine);
     const imageHtml = routine.image ? `<img class="routine-image" src="${routine.image}" alt="">` : "";
     const waitingLabelHtml = waiting ? `<span class="waiting-activation-label">ממתין להפעלה</span>` : "";
+    const estimatedSec = getRoutineEstimatedSeconds(routine);
+    const estimateHtml = todaySteps.length > 0
+      ? `<div class="routine-estimate">⏱ זמן משוער: ${formatDurationHe(estimatedSec)}</div>`
+      : "";
     const todayInfoHtml = waiting
-      ? `<div class="today-info">הפעלה חד-פעמית — לחץ "התחל" מתי שתרצה<br><strong>${todaySteps.length}</strong> Steps בכל הפעלה</div>`
-      : `<div class="today-info">להיום: <strong>${todaySteps.length}</strong> Steps</div>`;
+      ? `<div class="today-info">הפעלה חד-פעמית — לחץ "התחל" מתי שתרצה<br><strong>${todaySteps.length}</strong> Steps בכל הפעלה</div>${estimateHtml}`
+      : `<div class="today-info">להיום: <strong>${todaySteps.length}</strong> Steps</div>${estimateHtml}`;
     card.innerHTML = `
       ${imageHtml}${waitingLabelHtml}
       <h3>${escapeHtml(routine.name)}</h3>
@@ -952,7 +1026,6 @@ function getStepsForCalendarDay(routine, date, today) {
   return calendarSteps.filter(step => isStepDueOnDate(step, date));
 }
 
-/* ============ ביום ספציפי — מציג את כל ה-Steps של השגרה ============ */
 function getStepsForDayDetail(routine, date, today) {
   const dayOfWeek = date.getDay();
   if (!routine.days || routine.days.length === 0 || !routine.days.includes(dayOfWeek)) {
@@ -1114,12 +1187,18 @@ function openDayDetail(date) {
     nameEl.className = "day-detail-routine-name";
     nameEl.textContent = routine.name || "ללא שם";
     rBlock.appendChild(nameEl);
+    let totalSec = 0;
     stepsToShow.forEach((step, index) => {
+      totalSec += Math.max(1, Number(step.duration) || 60);
       const sEl = document.createElement("div");
       sEl.className = "day-detail-step";
       sEl.innerHTML = "<strong>#" + (step.stepNumber || index + 1) + "</strong> · " + formatTextWithLinks(step.name || "Step ללא שם");
       rBlock.appendChild(sEl);
     });
+    const estEl = document.createElement("div");
+    estEl.className = "routine-estimate";
+    estEl.textContent = "⏱ זמן משוער: " + formatDurationHe(totalSec);
+    rBlock.appendChild(estEl);
     contentEl.appendChild(rBlock);
   });
   if (!anySteps) {
@@ -1764,6 +1843,10 @@ async function startRoutine(routine, options = {}) {
   activeSteps = getTodaySteps(routine);
   if (activeSteps.length === 0) { alert("אין Steps פעילים לשגרה זו להיום."); return; }
   activeStepIndex = 0;
+  activeRoutineStartedAt = Date.now();
+  activeRoutineTotalEstimated = activeSteps.reduce(
+    (sum, s) => sum + Math.max(1, Number(s.duration) || 60), 0
+  );
   hideHomeUI();
   document.getElementById("directRoutineScreen").style.display = "none";
   document.getElementById("editorScreen").classList.add("hidden");
@@ -1793,10 +1876,12 @@ async function runStep() {
   const duration = currentStep.duration || 60;
   stepEndsAt = Date.now() + duration * 1000;
   updateTimerDisplay();
+  updateActiveEstimate();
   await startServerReminder(currentStep, duration);
   timerInterval = setInterval(() => {
     const remaining = Math.max(0, Math.round((stepEndsAt - Date.now()) / 1000));
     updateTimerDisplay();
+    updateActiveEstimate();
     if (remaining <= 0) {
       if (timerInterval) { clearInterval(timerInterval); timerInterval = null; }
       const finishedStep = activeSteps[activeStepIndex];
@@ -1856,7 +1941,6 @@ function fireStepFinishedNotification(step, isReminder) {
   if (nextStepName) { body += "\n→ הבא אחרי ביצוע: " + nextStepName; }
   try {
     if (activeNotification) { try { activeNotification.close(); } catch (e) {} }
-    /* silent:true — מבטל את צליל מערכת ההפעלה. הצליל היחיד הוא playStepBeep */
     const n = new Notification(title, { body, tag: "routine-step-finished", renotify: true, requireInteraction: true, silent: true });
     activeNotification = n;
     n.onclick = () => { try { window.focus(); } catch (e) {} n.close(); activeNotification = null; };

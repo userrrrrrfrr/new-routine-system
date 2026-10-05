@@ -101,7 +101,7 @@ input,select{width:100%;padding:13px;border:1px solid #ddd;border-radius:10px;ba
 #activeScreen{display:none;min-height:auto;padding:0}
 .active-box{max-width:480px;margin:0 auto;background:#fff;border-radius:28px;padding:16px 22px 24px;text-align:center;box-shadow:0 8px 30px rgba(0,0,0,.06)}
 #activeRoutineName{margin:0 0 8px;font-size:17px;font-weight:600;color:#222;text-align:left;width:100%}
-.active-step-card{background:#fafafa;border:2px dashed #e0e0e0;border-radius:20px;padding:18px 12px;margin-bottom:12px;cursor:pointer}
+.active-step-card{background:#fafafa;border:2px dashed #e0e0e0;border-radius:20px;padding:18px 12px;margin-bottom:12px;cursor:pointer;touch-action:manipulation;-webkit-tap-highlight-color:transparent;user-select:none}
 .active-step-image{width:100%;max-height:340px;object-fit:contain;border-radius:18px;margin:0 auto 6px;display:block;pointer-events:none}
 #activeStepName{font-size:42px;font-weight:800;color:#d00;margin:8px 0 8px;line-height:1.15;word-break:break-word}
 #activeStepName a{color:#007aff;text-decoration:underline;pointer-events:auto}
@@ -172,7 +172,6 @@ input,select{width:100%;padding:13px;border:1px solid #ddd;border-radius:10px;ba
 .show-in-calendar-box input[type="checkbox"]{width:18px;height:18px;accent-color:#111;flex-shrink:0;cursor:pointer}
 .show-in-calendar-box label{font-weight:600;font-size:14px;cursor:pointer;margin:0}
 .show-in-calendar-box .hint{font-size:12px;color:#888;font-weight:normal;display:block;margin-top:2px}
-/* ===== זמן משוער ===== */
 .routine-estimate{display:inline-flex;align-items:center;gap:6px;margin-top:8px;padding:5px 12px;border-radius:9px;background:#eef4ff;color:#0b5cff;font-size:13px;font-weight:600;font-variant-numeric:tabular-nums;flex-wrap:wrap}
 .routine-estimate .est-sep{color:#9db8ff;font-weight:400}
 .routine-estimate .est-clock{color:#0b5cff}
@@ -181,6 +180,20 @@ input,select{width:100%;padding:13px;border:1px solid #ddd;border-radius:10px;ba
 .active-estimate .est-item{display:inline-flex;align-items:baseline;gap:5px;background:#f5f5f7;padding:5px 10px;border-radius:9px}
 .active-estimate .est-item strong{color:#111;font-size:15px;font-weight:700;letter-spacing:.3px}
 .active-estimate .est-item.est-clock strong{color:#0b5cff}
+/* ===== מסך סיכום שגרה ===== */
+.result-screen{display:none}
+.result-box{max-width:480px;margin:0 auto;border-radius:28px;padding:34px 24px;text-align:center;box-shadow:0 8px 30px rgba(0,0,0,.06);border:3px solid}
+.result-box.ok{background:#eefaf0;border-color:#2fb344;color:#0a7a1f}
+.result-box.bad{background:#fff0f0;border-color:#e03131;color:#c40000}
+.result-icon{font-size:64px;line-height:1}
+.result-title{font-size:30px;font-weight:800;margin:12px 0 6px}
+.result-sub{font-size:17px;margin-bottom:22px}
+.result-actions{display:flex;gap:10px}
+.result-actions button{flex:1;padding:14px;border-radius:14px;font-size:16px;border:1px solid #ddd;background:#fff;color:#111}
+.result-actions .primary{background:#111;color:#fff;border:0}
+.routine-status{display:inline-block;margin-top:8px;padding:5px 12px;border-radius:9px;font-size:13px;font-weight:700}
+.routine-status.ok{background:#eefaf0;color:#0a8f0a}
+.routine-status.bad{background:#fff0f0;color:#c40000}
 </style>
 </head>
 <body>
@@ -301,6 +314,18 @@ input,select{width:100%;padding:13px;border:1px solid #ddd;border-radius:10px;ba
       </div>
     </div>
 
+    <div id="resultScreen" class="result-screen">
+      <div id="resultBox" class="result-box">
+        <div id="resultIcon" class="result-icon"></div>
+        <div id="resultTitle" class="result-title"></div>
+        <div id="resultSub" class="result-sub"></div>
+        <div class="result-actions">
+          <button type="button" id="resultResumeBtn" class="primary">המשך שגרה</button>
+          <button type="button" id="resultBackBtn">חזרה לשגרות</button>
+        </div>
+      </div>
+    </div>
+
     <div id="activeScreen">
       <div class="active-box">
         <h1 id="activeRoutineName"></h1>
@@ -387,11 +412,22 @@ let nextNotifAt = 0;
 let syncPollInterval = null;
 let activeRoutineStartedAt = 0;
 let activeRoutineTotalEstimated = 0;
+let completedStepIds = new Set();
+let stepBusyUntil = 0;
+let serverChain = Promise.resolve();
+let persistChain = Promise.resolve();
+let reminderBusy = false;
+let stepTimerFinished = false;
+let activeNotification = null;
 
 const DAY_START_HOUR = 4;
 const WORKER_URL = "https://routine-reminder.privatelyemail.workers.dev";
 const NEXT_NOTIF_STORAGE_KEY = "routine_next_notif_at";
+const ROUTINE_RESULT_KEY = "routine_results";
 const NOTIF_INTERVAL_MS = 90 * 1000;
+
+/* תור לקריאות שרת - מבטיח סדר (stop ואז start) ולא חוסם את הממשק */
+function queueServer(fn) { serverChain = serverChain.then(fn).catch(() => {}); return serverChain; }
 
 function getLogicalDate(date = new Date()) {
   const d = new Date(date.getTime());
@@ -465,17 +501,10 @@ function getRoutineEstimatedSeconds(routine) {
   steps.forEach(s => { total += Math.max(1, Number(s.duration) || 60); });
   return total;
 }
-/* ===== שעת סיום משוערת לשגרה (בהתאם לשעת ההתחלה שהוגדרה) =====
-   - אם יש startTime והשגרה מתוזמנת להיום: בסיס = startTime של היום
-   - אם השעה כבר עברה אך עדיין בתוך חלון הביצוע: בסיס = startTime (כאילו התחילה בזמן)
-   - אם אין startTime או שהשגרה ממתינה להפעלה ידנית: בסיס = עכשיו
-   - אם שעת הסיום כבר עברה - מחזיר null (לא מציגים) */
 function getRoutineEstimatedEndTime(routine) {
   const duration = getRoutineEstimatedSeconds(routine);
   if (duration <= 0) return null;
-
   const now = Date.now();
-
   if (routine.startTime && isRoutineScheduledToday(routine)) {
     const parts = routine.startTime.split(":");
     const h = Number(parts[0]);
@@ -487,8 +516,6 @@ function getRoutineEstimatedEndTime(routine) {
     if (end.getTime() < now) return null;
     return end;
   }
-
-  /* אין שעת התחלה (או ממתין להפעלה) - מבוסס על "עכשיו" */
   if (isRoutineWaitingActivation(routine)) return null;
   return new Date(now + duration * 1000);
 }
@@ -593,6 +620,7 @@ document.getElementById("logoutBtn").addEventListener("click", async () => {
   closeUserPanelFunction();
 });
 document.getElementById("enableNotificationsBtn")?.addEventListener("click", async () => {
+  unlockAudio();
   const granted = await ensureNotificationPermission();
   if (granted) { alert("התראות דפדפן הופעלו בהצלחה"); }
   else if (Notification.permission === "denied") { alert("ההרשאה נחסמה.\nלכי להגדרות → Safari → האתר → התראות והפעל."); }
@@ -639,25 +667,18 @@ document.getElementById("barkTestBtn")?.addEventListener("click", async () => {
   } catch (e) { alert("שגיאה: " + e.message); }
 });
 
-async function startServerReminder(step, duration) {
-  if (!currentUser || !activeRoutine) return;
+async function startServerReminder(step, duration, nextStepName = "", routine = activeRoutine) {
+  if (!currentUser || !routine) return;
   const effectiveBarkUrl = barkUrl || (document.getElementById("barkUrlInput")?.value || "").trim();
   if (!effectiveBarkUrl) return;
   const baseUrl = window.location.origin + window.location.pathname;
-  const routineUrl = activeRoutine.notificationUrl
-    ? activeRoutine.notificationUrl
-    : baseUrl + "?routine=" + encodeURIComponent(activeRoutine.id);
-  let nextStepName = "";
-  if (activeSteps && activeStepIndex + 1 < activeSteps.length) {
-    const next = activeSteps[activeStepIndex + 1];
-    if (next && next.name) nextStepName = String(next.name);
-  }
+  const routineUrl = routine.notificationUrl ? routine.notificationUrl : baseUrl + "?routine=" + encodeURIComponent(routine.id);
   try {
     await fetch(`${WORKER_URL}/start-step`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
-        routineName: activeRoutine.name || "",
+        routineName: routine.name || "",
         stepName: step.name || "",
         nextStepName: nextStepName,
         duration: duration,
@@ -671,7 +692,7 @@ async function startServerReminder(step, duration) {
 async function sendBarkImmediate(step) {
   try {
     const effectiveBarkUrl = barkUrl || (document.getElementById("barkUrlInput")?.value || "").trim();
-    if (!effectiveBarkUrl) return;
+    if (!effectiveBarkUrl || !activeRoutine) return;
     const cleanBarkUrl = effectiveBarkUrl.replace(/\s/g, "").replace(/\/$/, "");
     const parts = cleanBarkUrl.split("/");
     const deviceKey = parts[parts.length - 1];
@@ -680,13 +701,13 @@ async function sendBarkImmediate(step) {
       const next = activeSteps[activeStepIndex + 1];
       if (next && next.name) nextStepName = String(next.name);
     }
-    const routineName = activeRoutine ? (activeRoutine.name || "") : "";
+    const routineName = activeRoutine.name || "";
     const title = `⏰ ${routineName || "Routine"}`;
     const body = nextStepName
       ? `הזמן נגמר ל: ${step.name || ""}\n→ הבא: ${nextStepName}`
       : `הזמן נגמר ל: ${step.name || ""}`;
     const baseUrl = window.location.origin + window.location.pathname;
-    const routineUrl = (activeRoutine && activeRoutine.notificationUrl)
+    const routineUrl = activeRoutine.notificationUrl
       ? activeRoutine.notificationUrl
       : baseUrl + "?routine=" + encodeURIComponent(activeRoutine.id);
     const payload = { device_key: deviceKey, title, body, level: "critical", sound: "alarm", call: 1, group: "Routine" };
@@ -710,79 +731,38 @@ async function stopServerReminder() {
   catch (e) {}
 }
 
+/* הטיימר המקומי הוא מקור האמת. השרת משמש רק לסנכרון מועד ההתראה הבאה */
 async function syncTimerWithServer() {
-  try {
-    const res = await fetch(`${WORKER_URL}/status`);
-    const data = await res.json();
-    if (!data || !data.active) return;
-    if (!data.stepNotified && data.stepEndsAt) {
-      stepEndsAt = data.stepEndsAt;
-      updateTimerDisplay();
-      updateActiveEstimate();
-    }
-    if (data.stepNotified && data.lastSentAt) {
-      const serverNext = data.lastSentAt + NOTIF_INTERVAL_MS;
-      if (serverNext > nextNotifAt) {
-        nextNotifAt = serverNext;
-        saveNextNotifToStorage();
-      }
-      updateNextNotifDisplay();
-    }
-  } catch (e) {}
+  if (stepTimerFinished) await syncNextNotifFromServer();
 }
 
 function saveNextNotifToStorage() {
   try {
-    if (nextNotifAt > 0) {
-      localStorage.setItem(NEXT_NOTIF_STORAGE_KEY, String(nextNotifAt));
-    }
+    if (nextNotifAt > 0) { localStorage.setItem(NEXT_NOTIF_STORAGE_KEY, String(nextNotifAt)); }
   } catch (e) {}
-}
-function loadNextNotifFromStorage() {
-  try {
-    const val = localStorage.getItem(NEXT_NOTIF_STORAGE_KEY);
-    if (val) {
-      const parsed = Number(val);
-      if (Number.isFinite(parsed) && parsed > 0) {
-        nextNotifAt = parsed;
-        return true;
-      }
-    }
-  } catch (e) {}
-  return false;
 }
 function clearNextNotifFromStorage() {
   try { localStorage.removeItem(NEXT_NOTIF_STORAGE_KEY); } catch (e) {}
   nextNotifAt = 0;
 }
 
+/* לולאה אחת שמנהלת גם את הספירה לאחור וגם את התזכורת החוזרת כל 90 שניות */
 function startNextNotifCountdown() {
   stopNextNotifCountdown();
-
-  if (!nextNotifAt) { loadNextNotifFromStorage(); }
-
   if (!nextNotifAt || nextNotifAt < Date.now() - 5000) {
     nextNotifAt = Date.now() + NOTIF_INTERVAL_MS;
     saveNextNotifToStorage();
   }
-
   updateNextNotifDisplay();
-
   nextNotifInterval = setInterval(() => {
-    if (Date.now() >= nextNotifAt) {
-      nextNotifAt = nextNotifAt + NOTIF_INTERVAL_MS;
-      if (nextNotifAt < Date.now() - 5000) {
-        nextNotifAt = Date.now() + NOTIF_INTERVAL_MS;
-      }
+    if (stepTimerFinished && Date.now() >= nextNotifAt) {
+      nextNotifAt = Date.now() + NOTIF_INTERVAL_MS;
       saveNextNotifToStorage();
+      fireReminder();
     }
     updateNextNotifDisplay();
-  }, 100);
-
-  nextNotifSyncInterval = setInterval(async () => {
-    await syncNextNotifFromServer();
-  }, 5000);
-
+  }, 500);
+  nextNotifSyncInterval = setInterval(syncNextNotifFromServer, 5000);
   syncNextNotifFromServer();
 }
 
@@ -792,11 +772,11 @@ function stopNextNotifCountdown() {
 }
 
 async function syncNextNotifFromServer() {
+  if (!stepTimerFinished) return;
   try {
     const res = await fetch(`${WORKER_URL}/status`);
     const data = await res.json();
-    if (!data || !data.active || !data.stepNotified) return;
-    if (!data.lastSentAt) return;
+    if (!data || !data.active || !data.stepNotified || !data.lastSentAt) return;
     const serverNext = data.lastSentAt + NOTIF_INTERVAL_MS;
     if (serverNext > nextNotifAt) {
       nextNotifAt = serverNext;
@@ -846,21 +826,21 @@ onAuthStateChanged(auth, async (user) => {
 });
 
 document.addEventListener("visibilitychange", async () => {
-  if (document.visibilityState !== "visible") return;
-  if (!activeRoutine) return;
-  await syncTimerWithServer();
+  if (document.visibilityState !== "visible" || !activeRoutine) return;
+  if (document.getElementById("activeScreen").style.display !== "block") return;
+  startKeepAlive();
+  unlockAudio();
   if (!stepTimerFinished && stepEndsAt > 0 && Date.now() >= stepEndsAt) {
     const finishedStep = activeSteps[activeStepIndex];
     if (finishedStep) notifyStepFinished(finishedStep);
   }
+  syncTimerWithServer();
 });
 
 function startSyncPolling() {
   if (syncPollInterval) clearInterval(syncPollInterval);
   syncPollInterval = setInterval(() => {
-    if (document.visibilityState === "visible" && activeRoutine) {
-      syncTimerWithServer();
-    }
+    if (document.visibilityState === "visible" && activeRoutine) { syncTimerWithServer(); }
   }, 30000);
 }
 
@@ -950,7 +930,6 @@ function renderRoutines() {
     const imageHtml = routine.image ? `<img class="routine-image" src="${routine.image}" alt="">` : "";
     const waitingLabelHtml = waiting ? `<span class="waiting-activation-label">ממתין להפעלה</span>` : "";
 
-    /* ===== חישוב זמן משוער + שעת סיום ===== */
     const estimatedSec = getRoutineEstimatedSeconds(routine);
     let estimateHtml = "";
     if (todaySteps.length > 0) {
@@ -966,11 +945,18 @@ function renderRoutines() {
     const todayInfoHtml = waiting
       ? `<div class="today-info">הפעלה חד-פעמית — לחץ "התחל" מתי שתרצה<br><strong>${todaySteps.length}</strong> Steps בכל הפעלה</div>${estimateHtml}`
       : `<div class="today-info">להיום: <strong>${todaySteps.length}</strong> Steps</div>${estimateHtml}`;
+
+    const res = getRoutineResultToday(routine);
+    const statusHtml = res
+      ? (res.ok ? `<div class="routine-status ok">✓ הושלם היום</div>`
+                : `<div class="routine-status bad">✗ לא הושלם — נשארו ${res.remaining} Steps</div>`)
+      : "";
+
     card.innerHTML = `
       ${imageHtml}${waitingLabelHtml}
       <h3>${escapeHtml(routine.name)}</h3>
       <div class="routine-info">${routine.steps?.length || 0} Steps${routine.startTime ? ` · ⏰ ${escapeHtml(routine.startTime)}` : ""}</div>
-      ${todayInfoHtml}
+      ${todayInfoHtml}${statusHtml}
       <div class="actions">
         <button class="primary start">התחל</button>
         <button class="secondary reset">איפוס יום</button>
@@ -1069,13 +1055,10 @@ function getStepsForCalendarDay(routine, date, today) {
 
 function getStepsForDayDetail(routine, date, today) {
   const dayOfWeek = date.getDay();
-  if (!routine.days || routine.days.length === 0 || !routine.days.includes(dayOfWeek)) {
-    return [];
-  }
+  if (!routine.days || routine.days.length === 0 || !routine.days.includes(dayOfWeek)) { return []; }
   return routine.steps || [];
 }
 
-/* חישוב שעת סיום עבור תאריך ספציפי (בהתבסס על שעת התחלה של השגרה) */
 function getEstimatedEndTimeForDate(routine, date, durationSec) {
   if (!routine.startTime || durationSec <= 0) return null;
   const parts = routine.startTime.split(":");
@@ -1830,6 +1813,11 @@ async function resetRoutine(routine) {
     await setDoc(docRef, disabledStepsMap);
     const atRef = doc(db, "users", currentUser.uid, "meta", "disabledStepsAt");
     await setDoc(atRef, disabledAtMap);
+    try {
+      const store = JSON.parse(localStorage.getItem(ROUTINE_RESULT_KEY) || "{}");
+      delete store[getRoutineScheduleKey(routine, getLogicalDate())];
+      localStorage.setItem(ROUTINE_RESULT_KEY, JSON.stringify(store));
+    } catch (e) {}
     await loadRoutines();
     alert("ה-Steps שבוצעו היום אופסו.");
   } catch (e) { alert("שגיאה באיפוס: " + e.message); }
@@ -1895,33 +1883,75 @@ function startRoutineScheduleWatcher() {
   checkRoutineSchedules();
 }
 
+/* ===== תוצאת שגרה (הושלם / לא הושלם) ===== */
+function getRoutineResultToday(routine) {
+  try {
+    const store = JSON.parse(localStorage.getItem(ROUTINE_RESULT_KEY) || "{}");
+    return store[getRoutineScheduleKey(routine, getLogicalDate())] || null;
+  } catch (e) { return null; }
+}
+function saveRoutineResult(routine, ok, remaining, total) {
+  try {
+    const store = JSON.parse(localStorage.getItem(ROUTINE_RESULT_KEY) || "{}");
+    store[getRoutineScheduleKey(routine, getLogicalDate())] = { ok, remaining, total, at: Date.now() };
+    localStorage.setItem(ROUTINE_RESULT_KEY, JSON.stringify(store));
+  } catch (e) {}
+}
+function showRoutineResult() {
+  if (!activeRoutine) return;
+  if (timerInterval) { clearInterval(timerInterval); timerInterval = null; }
+  hideStepFinishedPanel();
+  stopKeepAlive();
+  const total = activeSteps.length;
+  const remaining = activeSteps.filter(s => !completedStepIds.has(s.id)).length;
+  const ok = remaining === 0;
+  saveRoutineResult(activeRoutine, ok, remaining, total);
+  document.getElementById("resultBox").className = "result-box " + (ok ? "ok" : "bad");
+  document.getElementById("resultIcon").textContent = ok ? "✅" : "❌";
+  document.getElementById("resultTitle").textContent = ok ? "השגרה הושלמה!" : "השגרה לא הושלמה";
+  document.getElementById("resultSub").textContent = ok
+    ? `בוצעו כל ${total} ה-Steps`
+    : `נשארו ${remaining} Steps (בוצעו ${total - remaining} מתוך ${total})`;
+  document.getElementById("resultResumeBtn").style.display = ok ? "none" : "block";
+  document.getElementById("activeScreen").style.display = "none";
+  document.getElementById("resultScreen").style.display = "block";
+}
+function resumeRoutine() {
+  const idx = activeSteps.findIndex(s => !completedStepIds.has(s.id));
+  if (idx < 0) { exitActiveScreen(); return; }
+  activeStepIndex = idx;
+  document.getElementById("resultScreen").style.display = "none";
+  document.getElementById("activeScreen").style.display = "block";
+  startKeepAlive();
+  runStep();
+}
+
 async function startRoutine(routine, options = {}) {
+  unlockAudio();
+  startKeepAlive();
   await ensureNotificationPermission();
   if (options.scheduled) { fireRoutineStartNotification(routine); }
+  const steps = getTodaySteps(routine);
+  if (steps.length === 0) { stopKeepAlive(); alert("אין Steps פעילים לשגרה זו להיום."); return; }
   activeRoutine = routine;
-  activeSteps = getTodaySteps(routine);
-  if (activeSteps.length === 0) { alert("אין Steps פעילים לשגרה זו להיום."); return; }
+  activeSteps = steps;
   activeStepIndex = 0;
+  completedStepIds = new Set();
   activeRoutineStartedAt = Date.now();
-  activeRoutineTotalEstimated = activeSteps.reduce(
-    (sum, s) => sum + Math.max(1, Number(s.duration) || 60), 0
-  );
+  activeRoutineTotalEstimated = steps.reduce((sum, s) => sum + Math.max(1, Number(s.duration) || 60), 0);
   hideHomeUI();
   document.getElementById("directRoutineScreen").style.display = "none";
   document.getElementById("editorScreen").classList.add("hidden");
+  document.getElementById("resultScreen").style.display = "none";
   document.getElementById("activeScreen").style.display = "block";
   document.getElementById("activeRoutineName").textContent = routine.name;
-  await runStep();
+  runStep();
 }
 
-async function runStep() {
-  hideStepFinishedPanel();
-  if (timerInterval) { clearInterval(timerInterval); }
-  if (activeStepIndex >= activeSteps.length) {
-    alert("כל הכבוד! סיימת את השגרה!");
-    exitActiveScreen();
-    return;
-  }
+function runStep() {
+  hideStepFinishedPanel(true);
+  if (timerInterval) { clearInterval(timerInterval); timerInterval = null; }
+  if (activeStepIndex >= activeSteps.length) { showRoutineResult(); return; }
   const currentStep = activeSteps[activeStepIndex];
   document.getElementById("activeStepName").innerHTML = formatTextWithLinks(currentStep.name);
   const activeImg = document.getElementById("activeStepImage");
@@ -1936,23 +1966,22 @@ async function runStep() {
   stepEndsAt = Date.now() + duration * 1000;
   updateTimerDisplay();
   updateActiveEstimate();
-  await startServerReminder(currentStep, duration);
+  const nextStep = activeSteps[activeStepIndex + 1];
+  const nextName = nextStep && nextStep.name ? String(nextStep.name) : "";
+  const routineSnap = activeRoutine;
+  queueServer(async () => {
+    await stopServerReminder();
+    await startServerReminder(currentStep, duration, nextName, routineSnap);
+  });
   timerInterval = setInterval(() => {
-    const remaining = Math.max(0, Math.round((stepEndsAt - Date.now()) / 1000));
     updateTimerDisplay();
     updateActiveEstimate();
-    if (remaining <= 0) {
-      if (timerInterval) { clearInterval(timerInterval); timerInterval = null; }
-      const finishedStep = activeSteps[activeStepIndex];
-      notifyStepFinished(finishedStep);
+    if (Date.now() >= stepEndsAt) {
+      clearInterval(timerInterval); timerInterval = null;
+      notifyStepFinished(activeSteps[activeStepIndex]);
     }
   }, 250);
 }
-
-let stepTimerFinished = false;
-let activeNotification = null;
-let stepReminderInterval = null;
-const STEP_REMINDER_MS = NOTIF_INTERVAL_MS;
 
 async function ensureNotificationPermission() {
   if (!("Notification" in window)) { return false; }
@@ -1963,16 +1992,12 @@ async function ensureNotificationPermission() {
     return result === "granted";
   } catch (e) { return false; }
 }
-function stopStepReminders() {
-  if (stepReminderInterval) { clearInterval(stepReminderInterval); stepReminderInterval = null; }
-}
-function hideStepFinishedPanel() {
+function hideStepFinishedPanel(keepServer = false) {
   stopStepBeep();
   stepTimerFinished = false;
-  stopStepReminders();
   stopNextNotifCountdown();
   clearNextNotifFromStorage();
-  stopServerReminder();
+  if (!keepServer) queueServer(stopServerReminder);
   const panel = document.getElementById("stepFinishedPanel");
   if (panel) { panel.classList.remove("show"); }
   if (activeNotification) {
@@ -2000,64 +2025,116 @@ function fireStepFinishedNotification(step, isReminder) {
   if (nextStepName) { body += "\n→ הבא אחרי ביצוע: " + nextStepName; }
   try {
     if (activeNotification) { try { activeNotification.close(); } catch (e) {} }
-    const n = new Notification(title, { body, tag: "routine-step-finished", renotify: true, requireInteraction: true, silent: true });
+    const n = new Notification(title, { body, tag: "routine-step-finished", renotify: true, requireInteraction: true, silent: false });
     activeNotification = n;
     n.onclick = () => { try { window.focus(); } catch (e) {} n.close(); activeNotification = null; };
   } catch (e) {}
 }
 
 async function notifyStepFinished(step) {
-  if (stepTimerFinished) return;
+  if (stepTimerFinished || !step) return;
   if (timerInterval) { clearInterval(timerInterval); timerInterval = null; }
-
   showStepFinishedPanel();
   fireStepFinishedNotification(step, false);
   playStepBeep(3);
-
-  await sendBarkImmediate(step);
-  await markNotifiedOnServer();
-
   nextNotifAt = Date.now() + NOTIF_INTERVAL_MS;
   saveNextNotifToStorage();
-
   startNextNotifCountdown();
-
-  stopStepReminders();
-  stepReminderInterval = setInterval(() => {
-    if (!stepTimerFinished) { stopStepReminders(); return; }
-    const current = activeSteps && activeSteps[activeStepIndex] ? activeSteps[activeStepIndex] : step;
-    fireStepFinishedNotification(current, true);
-    showStepFinishedPanel();
-  }, STEP_REMINDER_MS);
+  await sendBarkImmediate(step);
+  await markNotifiedOnServer();
 }
 
-/* ============ BEEP עם משך ועצירה ============ */
+/* תזכורת חוזרת (כל 90 שניות): התראה + צפצוף + Bark אם השרת לא שלח לאחרונה */
+async function fireReminder() {
+  if (!stepTimerFinished || reminderBusy) return;
+  const step = activeSteps[activeStepIndex];
+  if (!step) return;
+  reminderBusy = true;
+  try {
+    fireStepFinishedNotification(step, true);
+    showStepFinishedPanel();
+    playStepBeep(3);
+    let serverRecentlySent = false;
+    try {
+      const res = await fetch(`${WORKER_URL}/status`);
+      const data = await res.json();
+      if (data && data.lastSentAt && Date.now() - data.lastSentAt < 30000) serverRecentlySent = true;
+    } catch (e) {}
+    if (!serverRecentlySent && activeSteps[activeStepIndex] === step && stepTimerFinished) {
+      await sendBarkImmediate(step);
+      await markNotifiedOnServer();
+    }
+  } finally { reminderBusy = false; }
+}
+
+/* ============ צפצוף + שמירה על חיות הדף ============ */
 let beepAudioCtx = null;
 let beepTimeout = null;
 let beepOscillators = [];
+let silentAudioEl = null;
+let wakeLockSentinel = null;
+
+function getAudioCtx() {
+  const AudioCtx = window.AudioContext || window.webkitAudioContext;
+  if (!AudioCtx) return null;
+  if (!beepAudioCtx || beepAudioCtx.state === "closed") beepAudioCtx = new AudioCtx();
+  return beepAudioCtx;
+}
+function unlockAudio() {
+  try {
+    const ctx = getAudioCtx();
+    if (!ctx) return;
+    if (ctx.state === "suspended" || ctx.state === "interrupted") ctx.resume();
+    const src = ctx.createBufferSource();
+    src.buffer = ctx.createBuffer(1, 1, 22050);
+    src.connect(ctx.destination);
+    src.start(0);
+  } catch (e) {}
+}
+["touchstart", "touchend", "pointerdown", "click"].forEach(ev =>
+  document.addEventListener(ev, unlockAudio, { passive: true }));
+
+function makeSilentWavUrl() {
+  const sr = 8000, n = sr;
+  const buf = new ArrayBuffer(44 + n);
+  const v = new DataView(buf);
+  const w = (o, s) => { for (let i = 0; i < s.length; i++) v.setUint8(o + i, s.charCodeAt(i)); };
+  w(0, "RIFF"); v.setUint32(4, 36 + n, true); w(8, "WAVE"); w(12, "fmt ");
+  v.setUint32(16, 16, true); v.setUint16(20, 1, true); v.setUint16(22, 1, true);
+  v.setUint32(24, sr, true); v.setUint32(28, sr, true); v.setUint16(32, 1, true); v.setUint16(34, 8, true);
+  w(36, "data"); v.setUint32(40, n, true);
+  for (let i = 0; i < n; i++) v.setUint8(44 + i, 128);
+  return URL.createObjectURL(new Blob([buf], { type: "audio/wav" }));
+}
+async function startKeepAlive() {
+  try {
+    if (!silentAudioEl) { silentAudioEl = new Audio(makeSilentWavUrl()); silentAudioEl.loop = true; }
+    await silentAudioEl.play();
+  } catch (e) {}
+  try {
+    if ("wakeLock" in navigator && !wakeLockSentinel) {
+      wakeLockSentinel = await navigator.wakeLock.request("screen");
+      wakeLockSentinel.addEventListener("release", () => { wakeLockSentinel = null; });
+    }
+  } catch (e) {}
+}
+function stopKeepAlive() {
+  try { if (silentAudioEl) silentAudioEl.pause(); } catch (e) {}
+  try { if (wakeLockSentinel) { wakeLockSentinel.release(); wakeLockSentinel = null; } } catch (e) {}
+}
 
 function stopStepBeep() {
   if (beepTimeout) { clearTimeout(beepTimeout); beepTimeout = null; }
-  beepOscillators.forEach(osc => {
-    try { osc.stop(); } catch (e) {}
-  });
+  beepOscillators.forEach(osc => { try { osc.stop(); } catch (e) {} });
   beepOscillators = [];
-  if (beepAudioCtx) {
-    try { beepAudioCtx.close(); } catch (e) {}
-    beepAudioCtx = null;
-  }
 }
-
 function playStepBeep(durationSec = 3) {
   stopStepBeep();
   try {
-    const AudioCtx = window.AudioContext || window.webkitAudioContext;
-    if (!AudioCtx) return;
-
-    beepAudioCtx = new AudioCtx();
-    const ctx = beepAudioCtx;
-    const startTime = ctx.currentTime;
-
+    const ctx = getAudioCtx();
+    if (!ctx) return;
+    if (ctx.state !== "running") ctx.resume();
+    const startTime = ctx.currentTime + 0.05;
     function tone(start, freq, duration, peak) {
       const osc = ctx.createOscillator();
       const gain = ctx.createGain();
@@ -2072,22 +2149,14 @@ function playStepBeep(durationSec = 3) {
       osc.stop(start + duration + 0.02);
       beepOscillators.push(osc);
     }
-
     let t = startTime;
-    const endTime = startTime + durationSec;
-    while (t < endTime) {
+    while (t < startTime + durationSec) {
       tone(t, 880, 0.22, 0.55);
       tone(t + 0.28, 988, 0.28, 0.6);
       t += 0.9;
     }
-
-    beepTimeout = setTimeout(() => {
-      stopStepBeep();
-    }, durationSec * 1000 + 200);
-
-  } catch (e) {
-    console.warn("Beep failed:", e);
-  }
+    beepTimeout = setTimeout(stopStepBeep, durationSec * 1000 + 200);
+  } catch (e) { console.warn("Beep failed:", e); }
 }
 
 function updateTimerDisplay() {
@@ -2097,79 +2166,88 @@ function updateTimerDisplay() {
   document.getElementById("timer").textContent = `${m}:${s}`;
 }
 
-async function completeActiveStep() {
+/* מניעת לחיצות כפולות שגורמות לדילוג/תקיעה */
+function stepActionAllowed() {
+  const now = Date.now();
+  if (now < stepBusyUntil) return false;
+  stepBusyUntil = now + 350;
+  return true;
+}
+
+function completeActiveStep() {
+  if (!stepActionAllowed()) return;
   stopStepBeep();
   if (timerInterval) { clearInterval(timerInterval); timerInterval = null; }
   const currentStep = activeSteps[activeStepIndex];
-  if (!currentStep) { return; }
+  if (!currentStep) return;
 
   let rulesToApply = [...(currentStep.disableRules || [])];
   if (rulesToApply.length === 0 && currentStep.disableTargetId) {
     const fallbackHours = currentStep.disableHours !== undefined ? currentStep.disableHours : ((currentStep.disableDays || 1) * 24);
     rulesToApply = [{ targetId: currentStep.disableTargetId, hours: fallbackHours }];
   }
-
   const waitingRoutine = activeRoutine && isRoutineWaitingActivation(activeRoutine);
   const now = new Date();
-
   if (Number(currentStep.frequency) > 0 && !waitingRoutine) {
-    const untilDate = getDisableUntilForFrequency(currentStep.frequency, now);
-    disabledStepsMap[currentStep.id] = untilDate.toISOString();
+    disabledStepsMap[currentStep.id] = getDisableUntilForFrequency(currentStep.frequency, now).toISOString();
     disabledAtMap[currentStep.id] = now.getTime();
   }
-
-  if (rulesToApply.length > 0) {
-    rulesToApply.forEach(rule => {
-      if (!rule.targetId) return;
-      const untilDate = new Date(now.getTime() + (rule.hours * 60 * 60 * 1000));
-      disabledStepsMap[rule.targetId] = untilDate.toISOString();
-      disabledAtMap[rule.targetId] = now.getTime();
-    });
-  }
-
+  rulesToApply.forEach(rule => {
+    if (!rule.targetId) return;
+    disabledStepsMap[rule.targetId] = new Date(now.getTime() + rule.hours * 3600000).toISOString();
+    disabledAtMap[rule.targetId] = now.getTime();
+  });
   const hasDisableUpdates = (Number(currentStep.frequency) > 0 && !waitingRoutine) || rulesToApply.length > 0;
-  if (hasDisableUpdates) {
-    try {
-      const docRef = doc(db, "users", currentUser.uid, "meta", "disabledSteps");
-      await setDoc(docRef, disabledStepsMap, { merge: true });
-      const atRef = doc(db, "users", currentUser.uid, "meta", "disabledStepsAt");
-      await setDoc(atRef, disabledAtMap, { merge: true });
-    } catch (e) {}
-  }
 
   const activationRules = activationRulesMap[currentStep.id] || currentStep.activationRules || [];
-  if (activationRules.length > 0) {
-    activationRules.forEach(rule => {
-      if (!rule.targetId) return;
-      const days = Math.max(1, Number(rule.days) || 1);
-      const newUntil = getActivationUntilForDays(days);
-      const existingUntil = activatedStepsMap[rule.targetId];
-      if (!existingUntil || new Date(existingUntil) < new Date(newUntil)) {
-        activatedStepsMap[rule.targetId] = newUntil;
-      }
-    });
-    try {
-      const activationDocRef = doc(db, "users", currentUser.uid, "meta", "activatedSteps");
-      await setDoc(activationDocRef, activatedStepsMap, { merge: true });
-    } catch (e) {}
-  }
+  activationRules.forEach(rule => {
+    if (!rule.targetId) return;
+    const newUntil = getActivationUntilForDays(Math.max(1, Number(rule.days) || 1));
+    const existing = activatedStepsMap[rule.targetId];
+    if (!existing || new Date(existing) < new Date(newUntil)) activatedStepsMap[rule.targetId] = newUntil;
+  });
 
+  completedStepIds.add(currentStep.id);
   activeStepIndex++;
-  await runStep();
+  runStep(); // המעבר ל-Step הבא מיידי
+
+  // שמירה ל-Firestore ברקע, בלי לחסום את הממשק
+  persistChain = persistChain.then(async () => {
+    try {
+      if (hasDisableUpdates) {
+        await setDoc(doc(db, "users", currentUser.uid, "meta", "disabledSteps"), disabledStepsMap, { merge: true });
+        await setDoc(doc(db, "users", currentUser.uid, "meta", "disabledStepsAt"), disabledAtMap, { merge: true });
+      }
+      if (activationRules.length > 0) {
+        await setDoc(doc(db, "users", currentUser.uid, "meta", "activatedSteps"), activatedStepsMap, { merge: true });
+      }
+    } catch (e) {}
+  });
 }
 
-function skipActiveStep() { stopStepBeep(); activeStepIndex++; runStep(); }
+function skipActiveStep() {
+  if (!stepActionAllowed()) return;
+  stopStepBeep();
+  activeStepIndex++;
+  runStep();
+}
 
 function exitActiveScreen() {
   stopStepBeep();
   hideStepFinishedPanel();
   if (timerInterval) { clearInterval(timerInterval); timerInterval = null; }
+  stopKeepAlive();
+  activeRoutine = null;
+  activeSteps = [];
   document.getElementById("activeScreen").style.display = "none";
+  document.getElementById("resultScreen").style.display = "none";
   showHomeUI();
   renderRoutines();
 }
 
-document.getElementById("exitActiveBtn").addEventListener("click", exitActiveScreen);
+document.getElementById("exitActiveBtn").addEventListener("click", showRoutineResult);
+document.getElementById("resultBackBtn").addEventListener("click", exitActiveScreen);
+document.getElementById("resultResumeBtn").addEventListener("click", resumeRoutine);
 document.getElementById("continueNextStepBtn")?.addEventListener("click", () => {
   if (stepTimerFinished) { completeActiveStep(); }
 });

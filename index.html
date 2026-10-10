@@ -8,7 +8,7 @@
 *{box-sizing:border-box}
 body{margin:0;font-family:Arial,sans-serif;background:#f5f5f7;color:#111}
 button,input,select{font:inherit}
-button{cursor:pointer}
+button{cursor:pointer;touch-action:manipulation}
 .hidden{display:none!important}
 #loginScreen{min-height:100vh;display:flex;align-items:center;justify-content:center}
 .login-box{width:90%;max-width:400px;background:#fff;padding:40px 30px;border-radius:24px;text-align:center;box-shadow:0 10px 40px rgba(0,0,0,.08)}
@@ -101,7 +101,8 @@ input,select{width:100%;padding:13px;border:1px solid #ddd;border-radius:10px;ba
 #activeScreen{display:none;min-height:auto;padding:0}
 .active-box{max-width:480px;margin:0 auto;background:#fff;border-radius:28px;padding:16px 22px 24px;text-align:center;box-shadow:0 8px 30px rgba(0,0,0,.06)}
 #activeRoutineName{margin:0 0 8px;font-size:17px;font-weight:600;color:#222;text-align:left;width:100%}
-.active-step-card{background:#fafafa;border:2px dashed #e0e0e0;border-radius:20px;padding:18px 12px;margin-bottom:12px;cursor:pointer;touch-action:manipulation;-webkit-tap-highlight-color:transparent;user-select:none}
+.active-step-card{background:#fafafa;border:2px dashed #e0e0e0;border-radius:20px;padding:18px 12px;margin-bottom:12px;cursor:pointer;touch-action:manipulation;-webkit-tap-highlight-color:transparent;-webkit-touch-callout:none;user-select:none;-webkit-user-select:none}
+.active-step-card:active{background:#f0f0f0}
 .active-step-image{width:100%;max-height:340px;object-fit:contain;border-radius:18px;margin:0 auto 6px;display:block;pointer-events:none}
 #activeStepName{font-size:42px;font-weight:800;color:#d00;margin:8px 0 8px;line-height:1.15;word-break:break-word}
 #activeStepName a{color:#007aff;text-decoration:underline;pointer-events:auto}
@@ -419,6 +420,8 @@ let persistChain = Promise.resolve();
 let reminderBusy = false;
 let stepTimerFinished = false;
 let activeNotification = null;
+let stepToken = 0;            // מזהה Step נוכחי - מבטל פעולות אסינכרוניות ישנות
+let serverSyncTimer = null;   // דיבאונס לשליחת start-step לשרת
 
 const DAY_START_HOUR = 4;
 const WORKER_URL = "https://routine-reminder.privatelyemail.workers.dev";
@@ -426,7 +429,14 @@ const NEXT_NOTIF_STORAGE_KEY = "routine_next_notif_at";
 const ROUTINE_RESULT_KEY = "routine_results";
 const NOTIF_INTERVAL_MS = 90 * 1000;
 
-/* תור לקריאות שרת - מבטיח סדר (stop ואז start) ולא חוסם את הממשק */
+const sleep = ms => new Promise(r => setTimeout(r, ms));
+/* fetch עם timeout כדי שקריאה תקועה לא תחסום את התור */
+function fetchT(url, opts = {}, ms = 6000) {
+  const c = new AbortController();
+  const t = setTimeout(() => c.abort(), ms);
+  return fetch(url, { ...opts, signal: c.signal }).finally(() => clearTimeout(t));
+}
+/* תור לקריאות שרת - מבטיח סדר ולא חוסם את הממשק */
 function queueServer(fn) { serverChain = serverChain.then(fn).catch(() => {}); return serverChain; }
 
 function getLogicalDate(date = new Date()) {
@@ -557,7 +567,7 @@ function updateDayTimer() {
   if (lastLogicalDayKey === null) { lastLogicalDayKey = logicalKey; }
   else if (logicalKey !== lastLogicalDayKey) {
     lastLogicalDayKey = logicalKey;
-    if (currentUser) { loadRoutines(); }
+    if (currentUser && !activeRoutine) { loadRoutines(); }
   }
 }
 function startDayTimer() {
@@ -662,19 +672,26 @@ document.getElementById("barkTestBtn")?.addEventListener("click", async () => {
   try {
     const cleanUrl = url.replace(/\/$/, "");
     const testUrl = `${cleanUrl}/${encodeURIComponent("בדיקת Bark")}/${encodeURIComponent("החיבור עובד ✓")}?level=critical&sound=alarm&call=1`;
-    const res = await fetch(testUrl, { method: "GET" });
+    const res = await fetchT(testUrl, { method: "GET" }, 8000);
     alert(res.ok ? "ההתראה נשלחה ✓" : "השליחה נכשלה — בדוק את ה-URL");
   } catch (e) { alert("שגיאה: " + e.message); }
 });
 
+function getEffectiveBarkUrl() {
+  return (barkUrl || (document.getElementById("barkUrlInput")?.value || "")).trim();
+}
+function getRoutineUrl(routine) {
+  const baseUrl = window.location.origin + window.location.pathname;
+  return routine.notificationUrl ? routine.notificationUrl : baseUrl + "?routine=" + encodeURIComponent(routine.id);
+}
+
+/* ===== שרת: השרת הוא זה ששולח Bark גם כשהדף סגור/ברקע ===== */
 async function startServerReminder(step, duration, nextStepName = "", routine = activeRoutine) {
   if (!currentUser || !routine) return;
-  const effectiveBarkUrl = barkUrl || (document.getElementById("barkUrlInput")?.value || "").trim();
+  const effectiveBarkUrl = getEffectiveBarkUrl();
   if (!effectiveBarkUrl) return;
-  const baseUrl = window.location.origin + window.location.pathname;
-  const routineUrl = routine.notificationUrl ? routine.notificationUrl : baseUrl + "?routine=" + encodeURIComponent(routine.id);
   try {
-    await fetch(`${WORKER_URL}/start-step`, {
+    await fetchT(`${WORKER_URL}/start-step`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
@@ -683,15 +700,24 @@ async function startServerReminder(step, duration, nextStepName = "", routine = 
         nextStepName: nextStepName,
         duration: duration,
         barkUrl: effectiveBarkUrl,
-        routineUrl: routineUrl
+        routineUrl: getRoutineUrl(routine)
       })
     });
   } catch (e) {}
 }
+/* דיבאונס: בלחיצות מהירות נשלחת לשרת רק ההתחלה האחרונה */
+function scheduleServerStart(step, duration, nextName, routine) {
+  if (serverSyncTimer) clearTimeout(serverSyncTimer);
+  serverSyncTimer = setTimeout(() => {
+    serverSyncTimer = null;
+    queueServer(() => startServerReminder(step, duration, nextName, routine));
+  }, 300);
+}
 
+/* גיבוי: שליחת Bark מהדף עצמו (רק אם השרת לא שלח) */
 async function sendBarkImmediate(step) {
   try {
-    const effectiveBarkUrl = barkUrl || (document.getElementById("barkUrlInput")?.value || "").trim();
+    const effectiveBarkUrl = getEffectiveBarkUrl();
     if (!effectiveBarkUrl || !activeRoutine) return;
     const cleanBarkUrl = effectiveBarkUrl.replace(/\s/g, "").replace(/\/$/, "");
     const parts = cleanBarkUrl.split("/");
@@ -706,47 +732,41 @@ async function sendBarkImmediate(step) {
     const body = nextStepName
       ? `הזמן נגמר ל: ${step.name || ""}\n→ הבא: ${nextStepName}`
       : `הזמן נגמר ל: ${step.name || ""}`;
-    const baseUrl = window.location.origin + window.location.pathname;
-    const routineUrl = activeRoutine.notificationUrl
-      ? activeRoutine.notificationUrl
-      : baseUrl + "?routine=" + encodeURIComponent(activeRoutine.id);
     const payload = { device_key: deviceKey, title, body, level: "critical", sound: "alarm", call: 1, group: "Routine" };
+    const routineUrl = getRoutineUrl(activeRoutine);
     if (routineUrl) payload.url = routineUrl;
-    await fetch("https://api.day.app/push", {
+    await fetchT("https://api.day.app/push", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(payload)
-    });
+    }, 8000);
   } catch (e) {}
 }
 
 async function markNotifiedOnServer() {
-  try { await fetch(`${WORKER_URL}/mark-notified`, { method: "POST" }); }
+  try { await fetchT(`${WORKER_URL}/mark-notified`, { method: "POST" }); }
   catch (e) {}
 }
-
 async function stopServerReminder() {
   if (!currentUser) return;
-  try { await fetch(`${WORKER_URL}/stop`, { method: "POST" }); }
+  try { await fetchT(`${WORKER_URL}/stop`, { method: "POST" }); }
   catch (e) {}
 }
 
-/* הטיימר המקומי הוא מקור האמת. השרת משמש רק לסנכרון מועד ההתראה הבאה */
+/* הטיימר המקומי הוא מקור האמת. השרת משמש לסנכרון ההתראה הבאה */
 async function syncTimerWithServer() {
   if (stepTimerFinished) await syncNextNotifFromServer();
 }
 
 function saveNextNotifToStorage() {
-  try {
-    if (nextNotifAt > 0) { localStorage.setItem(NEXT_NOTIF_STORAGE_KEY, String(nextNotifAt)); }
-  } catch (e) {}
+  try { if (nextNotifAt > 0) { localStorage.setItem(NEXT_NOTIF_STORAGE_KEY, String(nextNotifAt)); } } catch (e) {}
 }
 function clearNextNotifFromStorage() {
   try { localStorage.removeItem(NEXT_NOTIF_STORAGE_KEY); } catch (e) {}
   nextNotifAt = 0;
 }
 
-/* לולאה אחת שמנהלת גם את הספירה לאחור וגם את התזכורת החוזרת כל 90 שניות */
+/* לולאה אחת: ספירה לאחור + תזכורת חוזרת כל 90 שניות */
 function startNextNotifCountdown() {
   stopNextNotifCountdown();
   if (!nextNotifAt || nextNotifAt < Date.now() - 5000) {
@@ -763,9 +783,7 @@ function startNextNotifCountdown() {
     updateNextNotifDisplay();
   }, 500);
   nextNotifSyncInterval = setInterval(syncNextNotifFromServer, 5000);
-  syncNextNotifFromServer();
 }
-
 function stopNextNotifCountdown() {
   if (nextNotifInterval) { clearInterval(nextNotifInterval); nextNotifInterval = null; }
   if (nextNotifSyncInterval) { clearInterval(nextNotifSyncInterval); nextNotifSyncInterval = null; }
@@ -773,19 +791,20 @@ function stopNextNotifCountdown() {
 
 async function syncNextNotifFromServer() {
   if (!stepTimerFinished) return;
+  const tk = stepToken;
   try {
-    const res = await fetch(`${WORKER_URL}/status`);
+    const res = await fetchT(`${WORKER_URL}/status`, {}, 5000);
     const data = await res.json();
+    if (tk !== stepToken || !stepTimerFinished) return;
     if (!data || !data.active || !data.stepNotified || !data.lastSentAt) return;
     const serverNext = data.lastSentAt + NOTIF_INTERVAL_MS;
-    if (serverNext > nextNotifAt) {
+    if (serverNext > Date.now() && Math.abs(serverNext - nextNotifAt) > 1500) {
       nextNotifAt = serverNext;
       saveNextNotifToStorage();
     }
     updateNextNotifDisplay();
   } catch (e) {}
 }
-
 function updateNextNotifDisplay() {
   const el = document.getElementById("nextNotifCountdown");
   if (!el) return;
@@ -810,8 +829,8 @@ onAuthStateChanged(auth, async (user) => {
     await loadDisabledSteps();
     await loadActivationRules();
     await loadActivatedSteps();
-    await loadRoutines();
     await loadBarkConfig();
+    await loadRoutines();
     startDayTimer();
     startSyncPolling();
     startRoutineScheduleWatcher();
@@ -1052,13 +1071,11 @@ function getStepsForCalendarDay(routine, date, today) {
   }
   return calendarSteps.filter(step => isStepDueOnDate(step, date));
 }
-
 function getStepsForDayDetail(routine, date, today) {
   const dayOfWeek = date.getDay();
   if (!routine.days || routine.days.length === 0 || !routine.days.includes(dayOfWeek)) { return []; }
   return routine.steps || [];
 }
-
 function getEstimatedEndTimeForDate(routine, date, durationSec) {
   if (!routine.startTime || durationSec <= 0) return null;
   const parts = routine.startTime.split(":");
@@ -1900,7 +1917,7 @@ function saveRoutineResult(routine, ok, remaining, total) {
 function showRoutineResult() {
   if (!activeRoutine) return;
   if (timerInterval) { clearInterval(timerInterval); timerInterval = null; }
-  hideStepFinishedPanel();
+  hideStepFinishedPanel();      // עוצר גם את התזכורת בשרת ואת הצפצוף
   stopKeepAlive();
   const total = activeSteps.length;
   const remaining = activeSteps.filter(s => !completedStepIds.has(s.id)).length;
@@ -1949,7 +1966,7 @@ async function startRoutine(routine, options = {}) {
 }
 
 function runStep() {
-  hideStepFinishedPanel(true);
+  hideStepFinishedPanel(true);   // מקדם stepToken ומבטל פעולות ישנות
   if (timerInterval) { clearInterval(timerInterval); timerInterval = null; }
   if (activeStepIndex >= activeSteps.length) { showRoutineResult(); return; }
   const currentStep = activeSteps[activeStepIndex];
@@ -1968,11 +1985,7 @@ function runStep() {
   updateActiveEstimate();
   const nextStep = activeSteps[activeStepIndex + 1];
   const nextName = nextStep && nextStep.name ? String(nextStep.name) : "";
-  const routineSnap = activeRoutine;
-  queueServer(async () => {
-    await stopServerReminder();
-    await startServerReminder(currentStep, duration, nextName, routineSnap);
-  });
+  scheduleServerStart(currentStep, duration, nextName, activeRoutine);
   timerInterval = setInterval(() => {
     updateTimerDisplay();
     updateActiveEstimate();
@@ -1993,11 +2006,15 @@ async function ensureNotificationPermission() {
   } catch (e) { return false; }
 }
 function hideStepFinishedPanel(keepServer = false) {
+  stepToken++;
   stopStepBeep();
   stepTimerFinished = false;
   stopNextNotifCountdown();
   clearNextNotifFromStorage();
-  if (!keepServer) queueServer(stopServerReminder);
+  if (!keepServer) {
+    if (serverSyncTimer) { clearTimeout(serverSyncTimer); serverSyncTimer = null; }
+    queueServer(stopServerReminder);
+  }
   const panel = document.getElementById("stepFinishedPanel");
   if (panel) { panel.classList.remove("show"); }
   if (activeNotification) {
@@ -2031,8 +2048,22 @@ function fireStepFinishedNotification(step, isReminder) {
   } catch (e) {}
 }
 
+/* גיבוי Bark: שולח מהדף רק אם השרת לא שלח לאחרונה */
+async function ensureBarkSent(step, tk, maxAgeMs = 15000) {
+  let recent = false;
+  try {
+    const res = await fetchT(`${WORKER_URL}/status`, {}, 5000);
+    const data = await res.json();
+    if (data && data.active && data.lastSentAt && Date.now() - data.lastSentAt < maxAgeMs) recent = true;
+  } catch (e) {}
+  if (recent || tk !== stepToken || !stepTimerFinished) return;
+  await sendBarkImmediate(step);
+  if (tk === stepToken && stepTimerFinished) await markNotifiedOnServer();
+}
+
 async function notifyStepFinished(step) {
   if (stepTimerFinished || !step) return;
+  const tk = stepToken;
   if (timerInterval) { clearInterval(timerInterval); timerInterval = null; }
   showStepFinishedPanel();
   fireStepFinishedNotification(step, false);
@@ -2040,39 +2071,90 @@ async function notifyStepFinished(step) {
   nextNotifAt = Date.now() + NOTIF_INTERVAL_MS;
   saveNextNotifToStorage();
   startNextNotifCountdown();
-  await sendBarkImmediate(step);
-  await markNotifiedOnServer();
+  await sleep(5000);   // נותנים לשרת (שנורה בדיוק בסוף הזמן) לשלוח קודם, כדי לא לשלוח כפול
+  if (tk !== stepToken || !stepTimerFinished) return;
+  await ensureBarkSent(step, tk);
 }
 
-/* תזכורת חוזרת (כל 90 שניות): התראה + צפצוף + Bark אם השרת לא שלח לאחרונה */
+/* תזכורת חוזרת כל 90 שניות: התראה + צפצוף (+ Bark אם השרת לא שלח) */
 async function fireReminder() {
   if (!stepTimerFinished || reminderBusy) return;
   const step = activeSteps[activeStepIndex];
   if (!step) return;
+  const tk = stepToken;
   reminderBusy = true;
   try {
     fireStepFinishedNotification(step, true);
     showStepFinishedPanel();
     playStepBeep(3);
-    let serverRecentlySent = false;
-    try {
-      const res = await fetch(`${WORKER_URL}/status`);
-      const data = await res.json();
-      if (data && data.lastSentAt && Date.now() - data.lastSentAt < 30000) serverRecentlySent = true;
-    } catch (e) {}
-    if (!serverRecentlySent && activeSteps[activeStepIndex] === step && stepTimerFinished) {
-      await sendBarkImmediate(step);
-      await markNotifiedOnServer();
-    }
+    await sleep(5000);
+    if (tk !== stepToken || !stepTimerFinished) return;
+    await ensureBarkSent(step, tk);
   } finally { reminderBusy = false; }
 }
 
 /* ============ צפצוף + שמירה על חיות הדף ============ */
+/* צפצוף דרך אלמנט <audio> אחד שנפתח בלחיצת משתמש - עובד גם אחרי 90 שניות
+   ובמצב שהדף ברקע, בניגוד ל-WebAudio שנחסם ב-iOS */
+let mediaEl = null;
+let silentUrl = null;
+let beepUrl = null;
+let audioUnlocked = false;
+let keepAliveOn = false;
+let beepPlaying = false;
+let beepBackTimer = null;
 let beepAudioCtx = null;
 let beepTimeout = null;
 let beepOscillators = [];
-let silentAudioEl = null;
 let wakeLockSentinel = null;
+
+function makeWavUrl(fillFn, seconds, sr = 16000) {
+  const n = Math.floor(sr * seconds);
+  const buf = new ArrayBuffer(44 + n * 2);
+  const v = new DataView(buf);
+  const w = (o, s) => { for (let i = 0; i < s.length; i++) v.setUint8(o + i, s.charCodeAt(i)); };
+  w(0, "RIFF"); v.setUint32(4, 36 + n * 2, true); w(8, "WAVE"); w(12, "fmt ");
+  v.setUint32(16, 16, true); v.setUint16(20, 1, true); v.setUint16(22, 1, true);
+  v.setUint32(24, sr, true); v.setUint32(28, sr * 2, true); v.setUint16(32, 2, true); v.setUint16(34, 16, true);
+  w(36, "data"); v.setUint32(40, n * 2, true);
+  for (let i = 0; i < n; i++) v.setInt16(44 + i * 2, Math.max(-32768, Math.min(32767, Math.round(fillFn(i / sr)))), true);
+  return URL.createObjectURL(new Blob([buf], { type: "audio/wav" }));
+}
+function beepSample(t) {
+  const tt = t % 0.9;
+  let f = 0, x = 0, d = 0;
+  if (tt < 0.22) { f = 880; x = tt; d = 0.22; }
+  else if (tt >= 0.28 && tt < 0.56) { f = 988; x = tt - 0.28; d = 0.28; }
+  else return 0;
+  const env = Math.min(1, x / 0.012, (d - x) / 0.03);
+  const sq = Math.sin(2 * Math.PI * f * t) >= 0 ? 1 : -1;
+  return sq * Math.max(0, env) * 0.55 * 32767;
+}
+function ensureMedia() {
+  if (!mediaEl) {
+    mediaEl = new Audio();
+    mediaEl.setAttribute("playsinline", "");
+    mediaEl.preload = "auto";
+    mediaEl.addEventListener("ended", () => { if (beepPlaying) restoreSilent(); });
+  }
+  if (!silentUrl) silentUrl = makeWavUrl(() => 0, 1, 8000);
+  if (!beepUrl) beepUrl = makeWavUrl(beepSample, 3.6, 16000);
+  return mediaEl;
+}
+function restoreSilent() {
+  beepPlaying = false;
+  if (beepBackTimer) { clearTimeout(beepBackTimer); beepBackTimer = null; }
+  if (!mediaEl) return;
+  if (keepAliveOn) {
+    try {
+      mediaEl.loop = true;
+      mediaEl.src = silentUrl;
+      mediaEl.play().catch(() => {});
+    } catch (e) {}
+  } else {
+    try { mediaEl.pause(); } catch (e) {}
+  }
+}
 
 function getAudioCtx() {
   const AudioCtx = window.AudioContext || window.webkitAudioContext;
@@ -2083,33 +2165,36 @@ function getAudioCtx() {
 function unlockAudio() {
   try {
     const ctx = getAudioCtx();
-    if (!ctx) return;
-    if (ctx.state === "suspended" || ctx.state === "interrupted") ctx.resume();
-    const src = ctx.createBufferSource();
-    src.buffer = ctx.createBuffer(1, 1, 22050);
-    src.connect(ctx.destination);
-    src.start(0);
+    if (ctx && (ctx.state === "suspended" || ctx.state === "interrupted")) ctx.resume();
+  } catch (e) {}
+  if (audioUnlocked || beepPlaying) return;
+  try {
+    const el = ensureMedia();
+    el.loop = true;
+    el.src = silentUrl;
+    const p = el.play();
+    if (p && p.then) {
+      p.then(() => { audioUnlocked = true; if (!keepAliveOn && !beepPlaying) { try { el.pause(); } catch (e) {} } }).catch(() => {});
+    }
   } catch (e) {}
 }
 ["touchstart", "touchend", "pointerdown", "click"].forEach(ev =>
   document.addEventListener(ev, unlockAudio, { passive: true }));
 
-function makeSilentWavUrl() {
-  const sr = 8000, n = sr;
-  const buf = new ArrayBuffer(44 + n);
-  const v = new DataView(buf);
-  const w = (o, s) => { for (let i = 0; i < s.length; i++) v.setUint8(o + i, s.charCodeAt(i)); };
-  w(0, "RIFF"); v.setUint32(4, 36 + n, true); w(8, "WAVE"); w(12, "fmt ");
-  v.setUint32(16, 16, true); v.setUint16(20, 1, true); v.setUint16(22, 1, true);
-  v.setUint32(24, sr, true); v.setUint32(28, sr, true); v.setUint16(32, 1, true); v.setUint16(34, 8, true);
-  w(36, "data"); v.setUint32(40, n, true);
-  for (let i = 0; i < n; i++) v.setUint8(44 + i, 128);
-  return URL.createObjectURL(new Blob([buf], { type: "audio/wav" }));
-}
 async function startKeepAlive() {
+  keepAliveOn = true;
   try {
-    if (!silentAudioEl) { silentAudioEl = new Audio(makeSilentWavUrl()); silentAudioEl.loop = true; }
-    await silentAudioEl.play();
+    const el = ensureMedia();
+    if (!beepPlaying) {
+      if (el.src !== silentUrl) { el.loop = true; el.src = silentUrl; }
+      await el.play();
+      audioUnlocked = true;
+    }
+  } catch (e) {}
+  try {
+    if ("mediaSession" in navigator && window.MediaMetadata) {
+      navigator.mediaSession.metadata = new MediaMetadata({ title: "Routine", artist: activeRoutine ? (activeRoutine.name || "") : "" });
+    }
   } catch (e) {}
   try {
     if ("wakeLock" in navigator && !wakeLockSentinel) {
@@ -2119,7 +2204,8 @@ async function startKeepAlive() {
   } catch (e) {}
 }
 function stopKeepAlive() {
-  try { if (silentAudioEl) silentAudioEl.pause(); } catch (e) {}
+  keepAliveOn = false;
+  if (!beepPlaying) { try { if (mediaEl) mediaEl.pause(); } catch (e) {} }
   try { if (wakeLockSentinel) { wakeLockSentinel.release(); wakeLockSentinel = null; } } catch (e) {}
 }
 
@@ -2127,9 +2213,9 @@ function stopStepBeep() {
   if (beepTimeout) { clearTimeout(beepTimeout); beepTimeout = null; }
   beepOscillators.forEach(osc => { try { osc.stop(); } catch (e) {} });
   beepOscillators = [];
+  if (beepPlaying) restoreSilent();
 }
-function playStepBeep(durationSec = 3) {
-  stopStepBeep();
+function webAudioBeep(durationSec) {
   try {
     const ctx = getAudioCtx();
     if (!ctx) return;
@@ -2156,7 +2242,22 @@ function playStepBeep(durationSec = 3) {
       t += 0.9;
     }
     beepTimeout = setTimeout(stopStepBeep, durationSec * 1000 + 200);
-  } catch (e) { console.warn("Beep failed:", e); }
+  } catch (e) {}
+}
+function playStepBeep(durationSec = 3) {
+  stopStepBeep();
+  try {
+    const el = ensureMedia();
+    beepPlaying = true;
+    el.loop = false;
+    el.src = beepUrl;
+    el.currentTime = 0;
+    el.volume = 1;
+    const p = el.play();
+    if (beepBackTimer) clearTimeout(beepBackTimer);
+    beepBackTimer = setTimeout(() => { if (beepPlaying) restoreSilent(); }, 3800);
+    if (p && p.catch) p.catch(() => { beepPlaying = false; webAudioBeep(durationSec); });
+  } catch (e) { beepPlaying = false; webAudioBeep(durationSec); }
 }
 
 function updateTimerDisplay() {
@@ -2166,20 +2267,21 @@ function updateTimerDisplay() {
   document.getElementById("timer").textContent = `${m}:${s}`;
 }
 
-/* מניעת לחיצות כפולות שגורמות לדילוג/תקיעה */
+/* חוסם רק לחיצה כפולה מיידית, כדי שהלחיצות יהיו חלקות */
 function stepActionAllowed() {
   const now = Date.now();
   if (now < stepBusyUntil) return false;
-  stepBusyUntil = now + 350;
+  stepBusyUntil = now + 180;
   return true;
 }
 
 function completeActiveStep() {
   if (!stepActionAllowed()) return;
-  stopStepBeep();
-  if (timerInterval) { clearInterval(timerInterval); timerInterval = null; }
+  if (!activeRoutine) return;
   const currentStep = activeSteps[activeStepIndex];
   if (!currentStep) return;
+  stopStepBeep();
+  if (timerInterval) { clearInterval(timerInterval); timerInterval = null; }
 
   let rulesToApply = [...(currentStep.disableRules || [])];
   if (rulesToApply.length === 0 && currentStep.disableTargetId) {
@@ -2212,14 +2314,19 @@ function completeActiveStep() {
   runStep(); // המעבר ל-Step הבא מיידי
 
   // שמירה ל-Firestore ברקע, בלי לחסום את הממשק
+  const disabledSnap = hasDisableUpdates ? { ...disabledStepsMap } : null;
+  const atSnap = hasDisableUpdates ? { ...disabledAtMap } : null;
+  const activatedSnap = activationRules.length > 0 ? { ...activatedStepsMap } : null;
+  const uid = currentUser ? currentUser.uid : null;
   persistChain = persistChain.then(async () => {
+    if (!uid) return;
     try {
-      if (hasDisableUpdates) {
-        await setDoc(doc(db, "users", currentUser.uid, "meta", "disabledSteps"), disabledStepsMap, { merge: true });
-        await setDoc(doc(db, "users", currentUser.uid, "meta", "disabledStepsAt"), disabledAtMap, { merge: true });
+      if (disabledSnap) {
+        await setDoc(doc(db, "users", uid, "meta", "disabledSteps"), disabledSnap, { merge: true });
+        await setDoc(doc(db, "users", uid, "meta", "disabledStepsAt"), atSnap, { merge: true });
       }
-      if (activationRules.length > 0) {
-        await setDoc(doc(db, "users", currentUser.uid, "meta", "activatedSteps"), activatedStepsMap, { merge: true });
+      if (activatedSnap) {
+        await setDoc(doc(db, "users", uid, "meta", "activatedSteps"), activatedSnap, { merge: true });
       }
     } catch (e) {}
   });
@@ -2227,6 +2334,7 @@ function completeActiveStep() {
 
 function skipActiveStep() {
   if (!stepActionAllowed()) return;
+  if (!activeRoutine) return;
   stopStepBeep();
   activeStepIndex++;
   runStep();
